@@ -1,0 +1,39 @@
+[project]
+name = "full-stack-ai-shared"
+version = "0.1.0"
+description = "Shared Python libraries for the Full Stack AI Portfolio."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic-settings>=2.14.2",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17.0",
+    "pytest>=8.4.0",
+    "pytest-asyncio>=1.1.0",
+    "ruff>=0.12.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["full_stack_ai_shared"]
+mypy_path = "src"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

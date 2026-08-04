@@ -1,0 +1,5 @@
+"""Shared configuration utilities."""
+
+from full_stack_ai_shared.config.settings import Settings, get_settings
+
+__all__ = ["Settings", "get_settings"]
