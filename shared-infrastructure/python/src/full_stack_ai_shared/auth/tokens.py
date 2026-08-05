@@ -5,7 +5,7 @@ from typing import Any
 
 import jwt
 from jwt import ExpiredSignatureError, InvalidTokenError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from full_stack_ai_shared.security import TokenSettings
 
@@ -18,6 +18,7 @@ class TokenPayload(BaseModel):
     expires_at: datetime
     issuer: str
     audience: str
+    roles: list[str] = Field(default_factory=list)
 
 
 class TokenError(ValueError):
@@ -95,10 +96,34 @@ def decode_access_token(
     if not isinstance(subject, str) or not subject:
         raise TokenError("Access token subject is invalid.")
 
+    issued_at = payload.get("iat")
+    expires_at = payload.get("exp")
+    issuer = payload.get("iss")
+    audience = payload.get("aud")
+    raw_roles = payload.get("roles", [])
+
+    if not isinstance(issued_at, int | float):
+        raise TokenError("Access token issued-at claim is invalid.")
+
+    if not isinstance(expires_at, int | float):
+        raise TokenError("Access token expiration claim is invalid.")
+
+    if not isinstance(issuer, str) or not issuer:
+        raise TokenError("Access token issuer claim is invalid.")
+
+    if not isinstance(audience, str) or not audience:
+        raise TokenError("Access token audience claim is invalid.")
+
+    if not isinstance(raw_roles, list) or not all(
+        isinstance(role, str) for role in raw_roles
+    ):
+        raise TokenError("Access token roles claim is invalid.")
+
     return TokenPayload(
         subject=subject,
-        issued_at=datetime.fromtimestamp(payload["iat"], tz=UTC),
-        expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
-        issuer=payload["iss"],
-        audience=payload["aud"],
+        issued_at=datetime.fromtimestamp(issued_at, tz=UTC),
+        expires_at=datetime.fromtimestamp(expires_at, tz=UTC),
+        issuer=issuer,
+        audience=audience,
+        roles=raw_roles,
     )
