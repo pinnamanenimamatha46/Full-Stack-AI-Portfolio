@@ -2294,6 +2294,360 @@ def test_create_and_decode_access_token() -> None:
     assert payload.audience == settings.audience
     assert payload.expires_at > payload.issued_at
 
+"""Tests for shared authentication utilities."""
+
+from datetime import timedelta
+
+import jwt
+import pytest
+
+from full_stack_ai_shared.auth import (
+    TokenError,
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    verify_password,
+)
+from full_stack_ai_shared.security import TokenSettings
+
+
+def create_token_settings() -> TokenSettings:
+    return TokenSettings(
+        secret_key="test-secret-key-that-is-at-least-32-characters",
+        access_token_expire_minutes=30,
+    )
+
+
+def test_hash_password() -> None:
+    password = "StrongPassword123!"
+    hashed_password = hash_password(password)
+
+    assert hashed_password != password
+    assert verify_password(password, hashed_password) is True
+
+
+def test_verify_password_rejects_invalid_password() -> None:
+    hashed_password = hash_password("CorrectPassword123!")
+
+    assert verify_password(
+        "WrongPassword123!",
+        hashed_password,
+    ) is False
+
+
+def test_hash_password_uses_unique_salt() -> None:
+    password = "StrongPassword123!"
+
+    first_hash = hash_password(password)
+    second_hash = hash_password(password)
+
+    assert first_hash != second_hash
+    assert verify_password(password, first_hash) is True
+    assert verify_password(password, second_hash) is True
+
+
+def test_hash_password_rejects_empty_password() -> None:
+    with pytest.raises(
+        ValueError,
+        match="Password cannot be empty",
+    ):
+        hash_password("")
+
+
+def test_verify_password_rejects_empty_values() -> None:
+    assert verify_password("", "stored-hash") is False
+    assert verify_password("password", "") is False
+
+
+def test_create_and_decode_access_token() -> None:
+    settings = create_token_settings()
+
+    token = create_access_token("user-123", settings)
+    payload = decode_access_token(token, settings)
+
+    assert payload.subject == "user-123"
+    assert payload.issuer == settings.issuer
+    assert payload.audience == settings.audience
+    assert payload.expires_at > payload.issued_at
+
+
+def test_create_access_token_rejects_empty_subject() -> None:
+    settings = create_token_settings()
+
+    with pytest.raises(
+        ValueError,
+        match="Token subject cannot be empty",
+    ):
+        create_access_token("", settings)
+
+
+def test_access_token_rejects_protected_claim_override() -> None:
+    settings = create_token_settings()
+
+    with pytest.raises(
+        ValueError,
+        match="cannot override protected claims",
+    ):
+        create_access_token(
+            "user-123",
+            settings,
+            additional_claims={"sub": "other-user"},
+        )
+
+
+def test_decode_access_token_rejects_expired_token() -> None:
+    settings = create_token_settings()
+
+    token = create_access_token(
+        "user-123",
+        settings,
+        expires_delta=timedelta(seconds=-1),
+    )
+
+    with pytest.raises(
+        TokenError,
+        match="Access token has expired",
+    ):
+        decode_access_token(token, settings)
+
+
+def test_decode_access_token_rejects_invalid_signature() -> None:
+    settings = create_token_settings()
+    different_settings = TokenSettings(
+        secret_key="different-secret-key-that-is-also-long-enough",
+    )
+
+    token = create_access_token("user-123", settings)
+
+    with pytest.raises(
+        TokenError,
+        match="Access token is invalid",
+    ):
+        decode_access_token(token, different_settings)
+
+
+def test_decode_access_token_rejects_missing_subject() -> None:
+    settings = create_token_settings()
+
+    token = jwt.encode(
+        {
+            "iat": 1_700_000_000,
+            "exp": 4_000_000_000,
+            "iss": settings.issuer,
+            "aud": settings.audience,
+        },
+        settings.secret_key,
+        algorithm=settings.algorithm,
+    )
+
+    with pytest.raises(
+        TokenError,
+        match="Access token subject is invalid",
+    ):
+        decode_access_token(token, settings)
+
+## Run
+
+uv run ruff format tests\test_auth.py
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Add reusable FastAPI bearer authentication
+
+"""Reusable FastAPI authentication dependencies."""
+
+from collections.abc import Callable
+from typing import Annotated
+
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from full_stack_ai_shared.auth.tokens import (
+    TokenError,
+    TokenPayload,
+    decode_access_token,
+)
+from full_stack_ai_shared.exceptions import ApplicationError
+from full_stack_ai_shared.security import TokenSettings
+
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def create_current_token_dependency(
+    settings: TokenSettings,
+) -> Callable[..., TokenPayload]:
+    """Create a FastAPI dependency that validates bearer tokens."""
+
+    def get_current_token(
+        credentials: Annotated[
+            HTTPAuthorizationCredentials | None,
+            Depends(bearer_scheme),
+        ],
+    ) -> TokenPayload:
+        if credentials is None:
+            raise ApplicationError(
+                "Authentication credentials were not provided.",
+                code="not_authenticated",
+                status_code=401,
+            )
+
+        if credentials.scheme.lower() != "bearer":
+            raise ApplicationError(
+                "Unsupported authentication scheme.",
+                code="invalid_authentication_scheme",
+                status_code=401,
+            )
+
+        try:
+            return decode_access_token(
+                credentials.credentials,
+                settings,
+            )
+        except TokenError as exc:
+            raise ApplicationError(
+                str(exc),
+                code="invalid_access_token",
+                status_code=401,
+            ) from exc
+
+    return get_current_token
+
+    ## Update: code src\full_stack_ai_shared\auth\__init__.py
+
+    """Shared authentication utilities."""
+
+from full_stack_ai_shared.auth.dependencies import (
+    bearer_scheme,
+    create_current_token_dependency,
+)
+from full_stack_ai_shared.auth.passwords import (
+    hash_password,
+    verify_password,
+)
+from full_stack_ai_shared.auth.tokens import (
+    TokenError,
+    TokenPayload,
+    create_access_token,
+    decode_access_token,
+)
+
+__all__ = [
+    "TokenError",
+    "TokenPayload",
+    "bearer_scheme",
+    "create_access_token",
+    "create_current_token_dependency",
+    "decode_access_token",
+    "hash_password",
+    "verify_password",
+]
+
+## code tests\test_auth.py:
+
+"""Tests for shared authentication utilities."""
+
+from datetime import timedelta
+from typing import Annotated
+
+import jwt
+import pytest
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
+
+from full_stack_ai_shared.auth import (
+    TokenError,
+    TokenPayload,
+    create_access_token,
+    create_current_token_dependency,
+    decode_access_token,
+    hash_password,
+    verify_password,
+)
+from full_stack_ai_shared.exceptions import register_exception_handlers
+from full_stack_ai_shared.logging import RequestLoggingMiddleware
+from full_stack_ai_shared.security import TokenSettings
+
+
+def create_token_settings() -> TokenSettings:
+    """Return isolated token settings for tests."""
+
+    return TokenSettings(
+        secret_key="test-secret-key-that-is-at-least-32-characters",
+        access_token_expire_minutes=30,
+    )
+
+
+def create_auth_test_app(settings: TokenSettings) -> FastAPI:
+    """Create a FastAPI application with bearer authentication."""
+
+    app = FastAPI()
+    app.add_middleware(RequestLoggingMiddleware)
+    register_exception_handlers(app)
+
+    current_token = create_current_token_dependency(settings)
+
+    @app.get("/protected")
+    async def protected_route(
+        token: Annotated[TokenPayload, Depends(current_token)],
+    ) -> dict[str, str]:
+        return {"subject": token.subject}
+
+    return app
+
+
+def test_hash_password() -> None:
+    password = "StrongPassword123!"
+    hashed_password = hash_password(password)
+
+    assert hashed_password != password
+    assert verify_password(password, hashed_password) is True
+
+
+def test_verify_password_rejects_invalid_password() -> None:
+    hashed_password = hash_password("CorrectPassword123!")
+
+    assert verify_password(
+        "WrongPassword123!",
+        hashed_password,
+    ) is False
+
+
+def test_hash_password_uses_unique_salt() -> None:
+    password = "StrongPassword123!"
+
+    first_hash = hash_password(password)
+    second_hash = hash_password(password)
+
+    assert first_hash != second_hash
+    assert verify_password(password, first_hash) is True
+    assert verify_password(password, second_hash) is True
+
+
+def test_hash_password_rejects_empty_password() -> None:
+    with pytest.raises(
+        ValueError,
+        match="Password cannot be empty",
+    ):
+        hash_password("")
+
+
+def test_verify_password_rejects_empty_values() -> None:
+    assert verify_password("", "stored-hash") is False
+    assert verify_password("password", "") is False
+
+
+def test_create_and_decode_access_token() -> None:
+    settings = create_token_settings()
+
+    token = create_access_token("user-123", settings)
+    payload = decode_access_token(token, settings)
+
+    assert payload.subject == "user-123"
+    assert payload.issuer == settings.issuer
+    assert payload.audience == settings.audience
+    assert payload.expires_at > payload.issued_at
+
 
 def test_create_access_token_rejects_empty_subject() -> None:
     settings = create_token_settings()
@@ -2371,27 +2725,1015 @@ def test_decode_access_token_rejects_missing_subject() -> None:
         decode_access_token(token, settings)
 
 
+def test_protected_route_accepts_valid_token() -> None:
+    settings = create_token_settings()
+    client = TestClient(create_auth_test_app(settings))
+    token = create_access_token("user-123", settings)
+
+    response = client.get(
+        "/protected",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"subject": "user-123"}
+
+
+def test_protected_route_rejects_missing_token() -> None:
+    settings = create_token_settings()
+    client = TestClient(create_auth_test_app(settings))
+
+    response = client.get("/protected")
+    payload = response.json()
+
+    assert response.status_code == 401
+    assert payload["errors"][0]["code"] == "not_authenticated"
+
+
+def test_protected_route_rejects_invalid_token() -> None:
+    settings = create_token_settings()
+    client = TestClient(create_auth_test_app(settings))
+
+    response = client.get(
+        "/protected",
+        headers={"Authorization": "Bearer invalid-token"},
+    )
+    payload = response.json()
+
+    assert response.status_code == 401
+    assert payload["errors"][0]["code"] == "invalid_access_token"
+
+## Run
+
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## commit the changes
+
+cd ..\..
+git add shared-infrastructure/python
+git status
+git commit -m "Add shared authentication and JWT framework"
+git push origin main
+git status
+
+## Phase 2.6 — Shared Authorization (RBAC)
+
+## Step 1 — Create the folder and files
+
+New-Item src\full_stack_ai_shared\authorization -ItemType Directory -Force
+
+New-Item src\full_stack_ai_shared\authorization\__init__.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\authorization\roles.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\authorization\permissions.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\authorization\dependencies.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\authorization\decorators.py -ItemType File -Force
+
+New-Item tests\test_authorization.py -ItemType File -Force
+
+## Step 2 — Create roles
+code src\full_stack_ai_shared\authorization\roles.py
+
+"""Application roles."""
+
+from enum import StrEnum
+
+
+class Role(StrEnum):
+    ADMIN = "admin"
+    ENGINEER = "engineer"
+    ANALYST = "analyst"
+    OPERATOR = "operator"
+    AUDITOR = "auditor"
+    VIEWER = "viewer"
+
+## Step 3 — Create permissions
+code src\full_stack_ai_shared\authorization\permissions.py
+
+"""Permission definitions."""
+
+from enum import StrEnum
+
+from full_stack_ai_shared.authorization.roles import Role
+
+
+class Permission(StrEnum):
+    READ = "read"
+    WRITE = "write"
+    DELETE = "delete"
+    ADMIN = "admin"
+    EXECUTE = "execute"
+
+
+ROLE_PERMISSIONS: dict[Role, set[Permission]] = {
+    Role.ADMIN: {
+        Permission.READ,
+        Permission.WRITE,
+        Permission.DELETE,
+        Permission.ADMIN,
+        Permission.EXECUTE,
+    },
+    Role.ENGINEER: {
+        Permission.READ,
+        Permission.WRITE,
+        Permission.EXECUTE,
+    },
+    Role.ANALYST: {
+        Permission.READ,
+        Permission.EXECUTE,
+    },
+    Role.OPERATOR: {
+        Permission.READ,
+        Permission.WRITE,
+    },
+    Role.AUDITOR: {
+        Permission.READ,
+    },
+    Role.VIEWER: {
+        Permission.READ,
+    },
+}
+
+## Step 4 — Export the module
+code src\full_stack_ai_shared\authorization\__init__.py
+
+"""Authorization utilities."""
+
+from full_stack_ai_shared.authorization.permissions import (
+    Permission,
+    ROLE_PERMISSIONS,
+)
+from full_stack_ai_shared.authorization.roles import Role
+
+__all__ = [
+    "Permission",
+    "ROLE_PERMISSIONS",
+    "Role",
+]
+
+## Step 5 — Create authorization tests
+code tests\test_authorization.py
+
+"""Tests for authorization roles and permissions."""
+
+from full_stack_ai_shared.authorization import (
+    Permission,
+    ROLE_PERMISSIONS,
+    Role,
+)
+
+
+def test_admin_permissions() -> None:
+    permissions = ROLE_PERMISSIONS[Role.ADMIN]
+
+    assert Permission.ADMIN in permissions
+    assert Permission.DELETE in permissions
+    assert Permission.WRITE in permissions
+    assert Permission.READ in permissions
+
+
+def test_engineer_permissions() -> None:
+    permissions = ROLE_PERMISSIONS[Role.ENGINEER]
+
+    assert Permission.WRITE in permissions
+    assert Permission.EXECUTE in permissions
+    assert Permission.DELETE not in permissions
+
+
+def test_viewer_permissions() -> None:
+    permissions = ROLE_PERMISSIONS[Role.VIEWER]
+
+    assert permissions == {Permission.READ}
+
+## Verify
+
+uv run ruff format .
+uv run ruff check . --fix
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Add reusable permission dependencies
+code src\full_stack_ai_shared\authorization\dependencies.py
+
+"""FastAPI authorization dependencies."""
+
+from collections.abc import Callable
+
+from full_stack_ai_shared.auth import TokenPayload
+from full_stack_ai_shared.authorization.permissions import (
+    ROLE_PERMISSIONS,
+    Permission,
+)
+from full_stack_ai_shared.authorization.roles import Role
+from full_stack_ai_shared.exceptions import ApplicationError
+
+
+def extract_roles(token: TokenPayload) -> set[Role]:
+    """Extract validated roles from a token payload."""
+
+    raw_roles = getattr(token, "roles", None)
+
+    if raw_roles is None:
+        return set()
+
+    roles: set[Role] = set()
+
+    for raw_role in raw_roles:
+        try:
+            roles.add(Role(raw_role))
+        except ValueError:
+            continue
+
+    return roles
+
+
+def require_permission(
+    permission: Permission,
+) -> Callable[[TokenPayload], TokenPayload]:
+    """Create a dependency requiring a specific permission."""
+
+    def dependency(token: TokenPayload) -> TokenPayload:
+        roles = extract_roles(token)
+
+        has_permission = any(
+            permission in ROLE_PERMISSIONS.get(role, set())
+            for role in roles
+        )
+
+        if not has_permission:
+            raise ApplicationError(
+                "You do not have permission to perform this action.",
+                code="permission_denied",
+                status_code=403,
+            )
+
+        return token
+
+    return dependency
+
+## code src\full_stack_ai_shared\auth\tokens.py
+
+"""JWT access-token creation and validation."""
+
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import jwt
+from jwt import ExpiredSignatureError, InvalidTokenError
+from pydantic import BaseModel, Field
+
+from full_stack_ai_shared.security import TokenSettings
+
+
+class TokenPayload(BaseModel):
+    """Validated JWT payload."""
+
+    subject: str
+    issued_at: datetime
+    expires_at: datetime
+    issuer: str
+    audience: str
+    roles: list[str] = Field(default_factory=list)
+
+
+class TokenError(ValueError):
+    """Raised when an access token cannot be validated."""
+
+
+def create_access_token(
+    subject: str,
+    settings: TokenSettings,
+    *,
+    expires_delta: timedelta | None = None,
+    additional_claims: dict[str, Any] | None = None,
+) -> str:
+    """Create a signed JWT access token."""
+
+    if not subject.strip():
+        raise ValueError("Token subject cannot be empty.")
+
+    issued_at = datetime.now(UTC)
+    expires_at = issued_at + (
+        expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
+    )
+
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "iat": issued_at,
+        "exp": expires_at,
+        "iss": settings.issuer,
+        "aud": settings.audience,
+    }
+
+    if additional_claims:
+        protected_claims = {"sub", "iat", "exp", "iss", "aud"}
+        conflicting_claims = protected_claims.intersection(additional_claims)
+
+        if conflicting_claims:
+            names = ", ".join(sorted(conflicting_claims))
+            raise ValueError(
+                f"Additional claims cannot override protected claims: {names}"
+            )
+
+        payload.update(additional_claims)
+
+    return jwt.encode(
+        payload,
+        settings.secret_key,
+        algorithm=settings.algorithm,
+    )
+
+
+def decode_access_token(
+    token: str,
+    settings: TokenSettings,
+) -> TokenPayload:
+    """Decode and validate a JWT access token."""
+
+    if not token:
+        raise TokenError("Access token cannot be empty.")
+
+    try:
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.algorithm],
+            audience=settings.audience,
+            issuer=settings.issuer,
+        )
+    except ExpiredSignatureError as exc:
+        raise TokenError("Access token has expired.") from exc
+    except InvalidTokenError as exc:
+        raise TokenError("Access token is invalid.") from exc
+
+    subject = payload.get("sub")
+
+    if not isinstance(subject, str) or not subject:
+        raise TokenError("Access token subject is invalid.")
+
+    issued_at = payload.get("iat")
+    expires_at = payload.get("exp")
+    issuer = payload.get("iss")
+    audience = payload.get("aud")
+    raw_roles = payload.get("roles", [])
+
+    if not isinstance(issued_at, int | float):
+        raise TokenError("Access token issued-at claim is invalid.")
+
+    if not isinstance(expires_at, int | float):
+        raise TokenError("Access token expiration claim is invalid.")
+
+    if not isinstance(issuer, str) or not issuer:
+        raise TokenError("Access token issuer claim is invalid.")
+
+    if not isinstance(audience, str) or not audience:
+        raise TokenError("Access token audience claim is invalid.")
+
+    if not isinstance(raw_roles, list) or not all(
+        isinstance(role, str) for role in raw_roles
+    ):
+        raise TokenError("Access token roles claim is invalid.")
+
+    return TokenPayload(
+        subject=subject,
+        issued_at=datetime.fromtimestamp(issued_at, tz=UTC),
+        expires_at=datetime.fromtimestamp(expires_at, tz=UTC),
+        issuer=issuer,
+        audience=audience,
+        roles=raw_roles,
+    )
+
+## Run
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Add RBAC dependency tests
+
+code tests\test_authorization.py
+
+"""Tests for authorization roles and permissions."""
+
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+from full_stack_ai_shared.auth import TokenPayload
+from full_stack_ai_shared.authorization import (
+    ROLE_PERMISSIONS,
+    Permission,
+    Role,
+    extract_roles,
+    require_permission,
+)
+from full_stack_ai_shared.exceptions import ApplicationError
+
+
+def create_token_with_roles(*roles: Role) -> TokenPayload:
+    """Create a token payload with assigned roles."""
+
+    now = datetime.now(UTC)
+
+    return TokenPayload(
+        subject="user-123",
+        issued_at=now,
+        expires_at=now + timedelta(minutes=30),
+        issuer="full-stack-ai-portfolio",
+        audience="full-stack-ai-applications",
+        roles=[role.value for role in roles],
+    )
+
+
+def test_admin_permissions() -> None:
+    permissions = ROLE_PERMISSIONS[Role.ADMIN]
+
+    assert Permission.ADMIN in permissions
+    assert Permission.DELETE in permissions
+    assert Permission.WRITE in permissions
+    assert Permission.READ in permissions
+
+
+def test_engineer_permissions() -> None:
+    permissions = ROLE_PERMISSIONS[Role.ENGINEER]
+
+    assert Permission.WRITE in permissions
+    assert Permission.EXECUTE in permissions
+    assert Permission.DELETE not in permissions
+
+
+def test_viewer_permissions() -> None:
+    permissions = ROLE_PERMISSIONS[Role.VIEWER]
+
+    assert permissions == {Permission.READ}
+
+
+def test_extract_roles() -> None:
+    token = create_token_with_roles(
+        Role.ADMIN,
+        Role.ANALYST,
+    )
+
+    assert extract_roles(token) == {
+        Role.ADMIN,
+        Role.ANALYST,
+    }
+
+
+def test_extract_roles_ignores_unknown_roles() -> None:
+    now = datetime.now(UTC)
+
+    token = TokenPayload(
+        subject="user-123",
+        issued_at=now,
+        expires_at=now + timedelta(minutes=30),
+        issuer="full-stack-ai-portfolio",
+        audience="full-stack-ai-applications",
+        roles=["admin", "unknown-role"],
+    )
+
+    assert extract_roles(token) == {Role.ADMIN}
+
+
+def test_require_permission_allows_authorized_role() -> None:
+    token = create_token_with_roles(Role.ENGINEER)
+    dependency = require_permission(Permission.WRITE)
+
+    result = dependency(token)
+
+    assert result is token
+
+
+def test_require_permission_allows_admin() -> None:
+    token = create_token_with_roles(Role.ADMIN)
+    dependency = require_permission(Permission.DELETE)
+
+    result = dependency(token)
+
+    assert result is token
+
+
+def test_require_permission_denies_unauthorized_role() -> None:
+    token = create_token_with_roles(Role.VIEWER)
+    dependency = require_permission(Permission.WRITE)
+
+    with pytest.raises(ApplicationError) as exc_info:
+        dependency(token)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.code == "permission_denied"
+
+
+def test_require_permission_denies_token_without_roles() -> None:
+    token = create_token_with_roles()
+    dependency = require_permission(Permission.READ)
+
+    with pytest.raises(ApplicationError) as exc_info:
+        dependency(token)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.code == "permission_denied"
+
+## code src\full_stack_ai_shared\authorization\__init__.py
+
+"""Authorization utilities."""
+
+from full_stack_ai_shared.authorization.dependencies import (
+    extract_roles,
+    require_permission,
+)
+from full_stack_ai_shared.authorization.permissions import (
+    ROLE_PERMISSIONS,
+    Permission,
+)
+from full_stack_ai_shared.authorization.roles import Role
+
+__all__ = [
+    "ROLE_PERMISSIONS",
+    "Permission",
+    "Role",
+    "extract_roles",
+    "require_permission",
+]
+
+## Run
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Commit the RBAC framework run From the parent folder:
+
+cd ..\..
+git add shared-infrastructure/python
+git status
+git commit -m "Add shared role-based authorization framework"
+git push origin main
+git status
+
+## FastAPI authentication + RBAC integration:
+
+## cd shared-infrastructure\python
+
+## code tests\test_authorization_api.py
+
+"""Tests for FastAPI authentication and authorization integration."""
+
+from typing import Annotated
+
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
+
+from full_stack_ai_shared.auth import (
+    TokenPayload,
+    create_access_token,
+    create_current_token_dependency,
+)
+from full_stack_ai_shared.authorization import (
+    Permission,
+    require_permission,
+)
+from full_stack_ai_shared.exceptions import register_exception_handlers
+from full_stack_ai_shared.logging import RequestLoggingMiddleware
+from full_stack_ai_shared.security import TokenSettings
+
+
+def create_token_settings() -> TokenSettings:
+    """Return token settings for API authorization tests."""
+
+    return TokenSettings(
+        secret_key="test-secret-key-that-is-at-least-32-characters",
+        access_token_expire_minutes=30,
+    )
+
+
+def create_authorization_test_app(settings: TokenSettings) -> FastAPI:
+    """Create a test application with authentication and RBAC."""
+
+    app = FastAPI()
+    app.add_middleware(RequestLoggingMiddleware)
+    register_exception_handlers(app)
+
+    current_token = create_current_token_dependency(settings)
+    require_write = require_permission(Permission.WRITE)
+
+    @app.get("/protected")
+    async def protected_route(
+        token: Annotated[TokenPayload, Depends(current_token)],
+    ) -> dict[str, str]:
+        return {"subject": token.subject}
+
+    @app.post("/write")
+    async def write_route(
+        token: Annotated[TokenPayload, Depends(current_token)],
+    ) -> dict[str, str]:
+        authorized_token = require_write(token)
+
+        return {
+            "subject": authorized_token.subject,
+            "status": "write-authorized",
+        }
+
+    return app
+
+
+def test_engineer_can_access_write_endpoint() -> None:
+    settings = create_token_settings()
+    client = TestClient(create_authorization_test_app(settings))
+
+    token = create_access_token(
+        "engineer-123",
+        settings,
+        additional_claims={"roles": ["engineer"]},
+    )
+
+    response = client.post(
+        "/write",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "subject": "engineer-123",
+        "status": "write-authorized",
+    }
+
+
+def test_viewer_cannot_access_write_endpoint() -> None:
+    settings = create_token_settings()
+    client = TestClient(create_authorization_test_app(settings))
+
+    token = create_access_token(
+        "viewer-123",
+        settings,
+        additional_claims={"roles": ["viewer"]},
+    )
+
+    response = client.post(
+        "/write",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    payload = response.json()
+
+    assert response.status_code == 403
+    assert payload["success"] is False
+    assert payload["errors"][0]["code"] == "permission_denied"
+
+
+def test_missing_token_cannot_access_protected_endpoint() -> None:
+    settings = create_token_settings()
+    client = TestClient(create_authorization_test_app(settings))
+
+    response = client.get("/protected")
+    payload = response.json()
+
+    assert response.status_code == 401
+    assert payload["errors"][0]["code"] == "not_authenticated"
+
+
+def test_admin_can_access_write_endpoint() -> None:
+    settings = create_token_settings()
+    client = TestClient(create_authorization_test_app(settings))
+
+    token = create_access_token(
+        "admin-123",
+        settings,
+        additional_claims={"roles": ["admin"]},
+    )
+
+    response = client.post(
+        "/write",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "write-authorized"
+
+## Run
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## commit
+
+cd ..\..
+git add shared-infrastructure/python
+git commit -m "Add FastAPI authorization integration tests"
+git push origin main
+git status
+
+## Phase 3 — Shared AI Foundation:
+
+
+## Step 1 — Build the LLM Abstraction
+New-Item src\full_stack_ai_shared\llm\base.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\llm\factory.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\llm\openai_provider.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\llm\ollama_provider.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\llm\anthropic_provider.py -ItemType File -Force
+
+New-Item tests\test_llm.py -ItemType File -Force
+
+# Step 2 — LLM Interface
+
+code src\full_stack_ai_shared\llm\base.py
+
+"""Abstract interfaces and models for LLM providers."""
+
+from abc import ABC, abstractmethod
+
+from pydantic import BaseModel, Field
+
+
+class LLMMessage(BaseModel):
+    """Single chat message sent to an LLM provider."""
+
+    role: str
+    content: str
+
+
+class LLMRequest(BaseModel):
+    """Provider-independent LLM request."""
+
+    messages: list[LLMMessage]
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0)
+    max_tokens: int | None = Field(default=None, gt=0)
+
+
+class LLMResponse(BaseModel):
+    """Provider-independent LLM response."""
+
+    content: str
+    model: str
+    provider: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+
+class BaseLLMProvider(ABC):
+    """Base interface implemented by all LLM providers."""
+
+    @property
+    @abstractmethod
+    def provider_name(self) -> str:
+        """Return the provider identifier."""
+
+    @abstractmethod
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        """Generate a response for a provider-independent request."""
+
+## update code src\full_stack_ai_shared\llm\__init__.py
+
+"""Shared LLM abstractions."""
+
+from full_stack_ai_shared.llm.base import (
+    BaseLLMProvider,
+    LLMMessage,
+    LLMRequest,
+    LLMResponse,
+)
+
+__all__ = [
+    "BaseLLMProvider",
+    "LLMMessage",
+    "LLMRequest",
+    "LLMResponse",
+]
+
+## code tests\test_llm.py
+
+"""Tests for shared LLM abstractions."""
+
+import pytest
+
+from full_stack_ai_shared.llm import (
+    BaseLLMProvider,
+    LLMMessage,
+    LLMRequest,
+    LLMResponse,
+)
+
+
+class FakeLLMProvider(BaseLLMProvider):
+    """Test provider for validating the shared interface."""
+
+    @property
+    def provider_name(self) -> str:
+        return "fake"
+
+    async def generate(self, request: LLMRequest) -> LLMResponse:
+        content = request.messages[-1].content
+
+        return LLMResponse(
+            content=f"Echo: {content}",
+            model="fake-model",
+            provider=self.provider_name,
+            input_tokens=3,
+            output_tokens=4,
+        )
+
+
+def test_llm_request_defaults() -> None:
+    request = LLMRequest(
+        messages=[
+            LLMMessage(
+                role="user",
+                content="Hello",
+            )
+        ]
+    )
+
+    assert request.temperature == 0.2
+    assert request.max_tokens is None
+    assert request.messages[0].role == "user"
+
+
+def test_llm_response() -> None:
+    response = LLMResponse(
+        content="Hello back",
+        model="fake-model",
+        provider="fake",
+    )
+
+    assert response.content == "Hello back"
+    assert response.model == "fake-model"
+    assert response.provider == "fake"
+
+
+@pytest.mark.asyncio
+async def test_fake_llm_provider() -> None:
+    provider = FakeLLMProvider()
+    request = LLMRequest(
+        messages=[
+            LLMMessage(
+                role="user",
+                content="Explain predictive maintenance.",
+            )
+        ]
+    )
+
+    response = await provider.generate(request)
+
+    assert provider.provider_name == "fake"
+    assert response.provider == "fake"
+    assert response.content == "Echo: Explain predictive maintenance."
+
+## Verify:
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Step 3 — Build the LLM provider factory
+code src\full_stack_ai_shared\llm\factory.py
+
+"""Factory for constructing LLM providers."""
+
+from collections.abc import Callable
+from typing import Any
+
+from full_stack_ai_shared.llm.base import BaseLLMProvider
+
+
+class UnsupportedLLMProviderError(ValueError):
+    """Raised when a requested LLM provider is not registered."""
+
+
+ProviderFactory = Callable[..., BaseLLMProvider]
+
+_PROVIDER_REGISTRY: dict[str, ProviderFactory] = {}
+
+
+def register_llm_provider(
+    name: str,
+    factory: ProviderFactory,
+) -> None:
+    """Register an LLM provider factory."""
+
+    normalized_name = name.strip().lower()
+
+    if not normalized_name:
+        raise ValueError("Provider name cannot be empty.")
+
+    _PROVIDER_REGISTRY[normalized_name] = factory
+
+
+def create_llm_provider(
+    name: str,
+    **kwargs: Any,
+) -> BaseLLMProvider:
+    """Create a registered LLM provider."""
+
+    normalized_name = name.strip().lower()
+
+    try:
+        factory = _PROVIDER_REGISTRY[normalized_name]
+    except KeyError as exc:
+        raise UnsupportedLLMProviderError(
+            f"Unsupported LLM provider: {name}"
+        ) from exc
+
+    return factory(**kwargs)
+
+
+def list_llm_providers() -> tuple[str, ...]:
+    """Return registered LLM provider names."""
+
+    return tuple(sorted(_PROVIDER_REGISTRY))
+
+
+def clear_llm_provider_registry() -> None:
+    """Clear the provider registry.
+
+    Intended primarily for isolated tests.
+    """
+
+    _PROVIDER_REGISTRY.clear()
+
+## Update - code src\full_stack_ai_shared\llm\__init__.py
+
+"""Shared LLM abstractions."""
+
+from full_stack_ai_shared.llm.base import (
+    BaseLLMProvider,
+    LLMMessage,
+    LLMRequest,
+    LLMResponse,
+)
+from full_stack_ai_shared.llm.factory import (
+    UnsupportedLLMProviderError,
+    clear_llm_provider_registry,
+    create_llm_provider,
+    list_llm_providers,
+    register_llm_provider,
+)
+
+__all__ = [
+    "BaseLLMProvider",
+    "LLMMessage",
+    "LLMRequest",
+    "LLMResponse",
+    "UnsupportedLLMProviderError",
+    "clear_llm_provider_registry",
+    "create_llm_provider",
+    "list_llm_providers",
+    "register_llm_provider",
+]
+
+## code src\full_stack_ai_shared\llm\__init__.py
+
+"""Shared LLM abstractions."""
+
+from full_stack_ai_shared.llm.base import (
+    BaseLLMProvider,
+    LLMMessage,
+    LLMRequest,
+    LLMResponse,
+)
+from full_stack_ai_shared.llm.factory import (
+    UnsupportedLLMProviderError,
+    clear_llm_provider_registry,
+    create_llm_provider,
+    list_llm_providers,
+    register_llm_provider,
+)
+
+__all__ = [
+    "BaseLLMProvider",
+    "LLMMessage",
+    "LLMRequest",
+    "LLMResponse",
+    "UnsupportedLLMProviderError",
+    "clear_llm_provider_registry",
+    "create_llm_provider",
+    "list_llm_providers",
+    "register_llm_provider",
+]
+
+## Eun
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Commit from parent folder:
+
+cd ..\..
+git add shared-infrastructure/python
+git status
+git commit -m "Add shared LLM abstraction and provider factory"
+git push origin main
+git status
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-            
-
-
-
-
-
-                    
 
