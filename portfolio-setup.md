@@ -281,3 +281,2117 @@ temp/
         ## git remote -v
         ## git push -u origin main
         ## git log --oneline
+
+## 13) Run
+        ##  git add .gitignore
+        ##  git commit -m "Add parent gitignore"
+        ##  git push origin main
+        ##  git status
+        ##  git log --oneline
+
+        ## git add portfolio-setup.md
+        ## git commit -m "Update portfolio setup guide"
+        ## git push origin main
+
+## 14) Create the shared foundation folders
+
+$folders = @(
+    "shared-infrastructure\docker\postgres",
+    "shared-infrastructure\docker\redis",
+    "shared-infrastructure\docker\pgadmin",
+    "shared-infrastructure\python",
+    "shared-infrastructure\shared\config",
+    "shared-infrastructure\shared\database",
+    "shared-infrastructure\shared\auth",
+    "shared-infrastructure\shared\logging",
+    "shared-infrastructure\shared\ai",
+    "shared-infrastructure\shared\prompts",
+    "shared-infrastructure\shared\rag",
+    "shared-infrastructure\shared\agents",
+    "shared-infrastructure\shared\llm",
+    "shared-infrastructure\shared\utils",
+    "monitoring\prometheus",
+    "monitoring\grafana",
+    "templates\fastapi",
+    "templates\react",
+    "templates\nextjs",
+    "templates\streamlit"
+)
+
+foreach ($folder in $folders) {
+    New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    New-Item -ItemType File -Path "$folder\.gitkeep" -Force | Out-Null
+}
+
+## 15) Verify the structure:
+        ## tree /F
+
+## 16) Commit the shared infrastructure foundation folders
+        ## git add .
+        ## git commit -m "Add shared infrastructure foundation"
+        ## git push origin main
+        ## git status
+        ## git log --oneline
+
+## 17) cd shared-infrastructure\python
+
+        ## uv init --python 3.11
+
+        ## remove: Remove-Item .gitkeep
+
+        ## code pyproject.toml
+[project]
+name = "full-stack-ai-shared"
+version = "0.1.0"
+description = "Shared Python libraries and infrastructure for the Full Stack AI Portfolio."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+        ## code main.py
+def main() -> None:
+    print("Full Stack AI shared infrastructure is ready.")
+
+
+if __name__ == "__main__":
+    main()
+
+        ## Add Developmental Dependencies
+        ## Auv add --dev pytest pytest-asyncio ruff mypy
+        ## uv sync
+
+## 18)  Verify the workspace:
+        ## uv run python main.py
+        Full Stack AI shared infrastructure is ready.
+
+## 19)  Run
+        ## uv run ruff check .
+        All checks passed!
+        ## uv run pytest
+        no tests ran in 0.01
+
+        ## cd ..
+        ## git status
+
+## 20)  create the shared Python package structure:
+
+$folders = @(
+    "shared-infrastructure\python\src\full_stack_ai_shared\config",
+    "shared-infrastructure\python\src\full_stack_ai_shared\database",
+    "shared-infrastructure\python\src\full_stack_ai_shared\logging",
+    "shared-infrastructure\python\src\full_stack_ai_shared\ai",
+    "shared-infrastructure\python\src\full_stack_ai_shared\rag",
+    "shared-infrastructure\python\src\full_stack_ai_shared\agents",
+    "shared-infrastructure\python\src\full_stack_ai_shared\llm",
+    "shared-infrastructure\python\src\full_stack_ai_shared\utils",
+    "shared-infrastructure\python\tests"
+)
+
+foreach ($folder in $folders) {
+    New-Item -ItemType Directory -Path $folder -Force | Out-Null
+}
+
+        ## Create the Python package files:
+
+$files = @(
+    "shared-infrastructure\python\src\full_stack_ai_shared\__init__.py",
+    "shared-infrastructure\python\src\full_stack_ai_shared\config\__init__.py",
+    "shared-infrastructure\python\src\full_stack_ai_shared\database\__init__.py",
+    "shared-infrastructure\python\src\full_stack_ai_shared\logging\__init__.py",
+    "shared-infrastructure\python\src\full_stack_ai_shared\ai\__init__.py",
+    "shared-infrastructure\python\src\full_stack_ai_shared\rag\__init__.py",
+    "shared-infrastructure\python\src\full_stack_ai_shared\agents\__init__.py",
+    "shared-infrastructure\python\src\full_stack_ai_shared\llm\__init__.py",
+    "shared-infrastructure\python\src\full_stack_ai_shared\utils\__init__.py",
+    "shared-infrastructure\python\tests\__init__.py"
+)
+
+foreach ($file in $files) {
+    New-Item -ItemType File -Path $file -Force | Out-Null
+}
+
+        ## Update pyproject.toml
+            ## code shared-infrastructure\python\pyproject.toml
+[project]
+name = "full-stack-ai-shared"
+version = "0.1.0"
+description = "Shared Python libraries for the Full Stack AI Portfolio."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17.0",
+    "pytest>=8.4.0",
+    "pytest-asyncio>=1.1.0",
+    "ruff>=0.12.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["full_stack_ai_shared"]
+mypy_path = "src"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+## 21)  Update main.py
+        ## code shared-infrastructure\python\main.py
+
+from full_stack_ai_shared import __version__
+
+
+def main() -> None:
+    print(f"Full Stack AI shared infrastructure v{__version__} is ready.")
+
+
+if __name__ == "__main__":
+    main()
+
+## 22)  Update the package initializer
+        ## code shared-infrastructure\python\src\full_stack_ai_shared\__init__.py
+
+"""Shared Python utilities for the Full Stack AI Portfolio."""
+
+__version__ = "0.1.0"
+
+## 23)  Synchronize and verify
+
+        ##  cd shared-infrastructure\python
+        ##  uv sync
+        ##  uv run python main.py
+        ##  uv run ruff check .
+        ##  uv run mypy src
+        ##  uv run pytest
+
+## 24) Add the first shared configuration module
+
+        ##  install Pydantic Settings:
+        ##  uv add pydantic-settings
+        ##  UV SYNC
+
+## 25)  Create the configuration files:
+        code src\full_stack_ai_shared\config\settings.py
+
+"""Application configuration shared across portfolio projects."""
+
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Shared application settings."""
+
+    app_name: str = "Full Stack AI Portfolio"
+    environment: str = "development"
+    debug: bool = True
+
+    database_url: str = (
+        "postgresql+psycopg://postgres:postgres@localhost:5432/full_stack_ai"
+    )
+    redis_url: str = "redis://localhost:6379/0"
+
+    openai_api_key: str | None = None
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Return a cached settings instance."""
+
+    return Settings()
+
+## 26)  updatw: code src\full_stack_ai_shared\config\__init__.py
+
+"""Shared configuration utilities."""
+
+from full_stack_ai_shared.config.settings import Settings, get_settings
+
+__all__ = ["Settings", "get_settings"]
+
+## 27)  Add the first test: code tests\test_settings.py
+
+"""Tests for shared application settings."""
+
+from full_stack_ai_shared.config import Settings, get_settings
+
+
+def test_default_settings() -> None:
+    settings = Settings()
+
+    assert settings.app_name == "Full Stack AI Portfolio"
+    assert settings.environment == "development"
+    assert settings.debug is True
+    assert settings.redis_url == "redis://localhost:6379/0"
+
+
+def test_get_settings_is_cached() -> None:
+    first = get_settings()
+    second = get_settings()
+
+    assert first is second
+
+## 28)  Run
+        ##  uv run ruff check .
+        ## uv run mypy src
+        ## uv run pytest -v
+           2 passed in 0.57s
+        
+        ## git add shared-infrastructure/python
+        ## git commit -m "Add shared Python foundation"
+        ## git push origin main
+        ## git status
+        ## git log --oneline
+
+## 29)  Build the shared SQLAlchemy database layer
+
+        ## cd shared-infrastructure\python
+
+        ## 1. Install database dependencies: 
+                ## uv add sqlalchemy "psycopg[binary]"
+                uv sync
+
+        ## 2. Create the database files
+                ## New-Item src\full_stack_ai_shared\database\base.py -ItemType File -Force
+                ## New-Item src\full_stack_ai_shared\database\session.py -ItemType File -Force
+                ## New-Item tests\test_database.py -ItemType File -Force
+        
+        ## Add the declarative base:    code src\full_stack_ai_shared\database\base.py
+
+"""Shared SQLAlchemy declarative base."""
+
+from sqlalchemy.orm import DeclarativeBase
+
+
+class Base(DeclarativeBase):
+    """Base class for all SQLAlchemy models."""
+
+        ## Add engine and session management: code src\full_stack_ai_shared\database\session.py
+
+"""Shared SQLAlchemy engine and session utilities."""
+
+from collections.abc import Generator
+
+from sqlalchemy import Engine, create_engine
+from sqlalchemy.orm import Session, sessionmaker
+
+from full_stack_ai_shared.config import Settings, get_settings
+
+
+def create_database_engine(settings: Settings | None = None) -> Engine:
+    """Create a SQLAlchemy engine using application settings."""
+
+    resolved_settings = settings or get_settings()
+
+    connect_args: dict[str, object] = {}
+
+    if resolved_settings.database_url.startswith("sqlite"):
+        connect_args["check_same_thread"] = False
+
+    return create_engine(
+        resolved_settings.database_url,
+        pool_pre_ping=True,
+        connect_args=connect_args,
+    )
+
+
+def create_session_factory(
+    engine: Engine,
+) -> sessionmaker[Session]:
+    """Create a configured SQLAlchemy session factory."""
+
+    return sessionmaker(
+        bind=engine,
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+    )
+
+
+def get_database_session(
+    session_factory: sessionmaker[Session],
+) -> Generator[Session, None, None]:
+    """Yield a database session and always close it afterward."""
+
+    session = session_factory()
+
+    try:
+        yield session
+    finally:
+        session.close()
+
+        ## 5. Export the database utilities:    code src\full_stack_ai_shared\database\__init__.py
+
+"""Shared database utilities."""
+
+from full_stack_ai_shared.database.base import Base
+from full_stack_ai_shared.database.session import (
+    create_database_engine,
+    create_session_factory,
+    get_database_session,
+)
+
+__all__ = [
+    "Base",
+    "create_database_engine",
+    "create_session_factory",
+    "get_database_session",
+]
+
+        ## Add database tests:  code tests\test_database.py
+
+"""Tests for shared database utilities."""
+
+from sqlalchemy import Engine, text
+from sqlalchemy.orm import Session
+
+from full_stack_ai_shared.config import Settings
+from full_stack_ai_shared.database import (
+    create_database_engine,
+    create_session_factory,
+    get_database_session,
+)
+
+
+def create_test_settings() -> Settings:
+    """Return isolated SQLite settings for database tests."""
+
+    return Settings(
+        database_url="sqlite+pysqlite:///:memory:",
+        openai_api_key=None,
+    )
+
+
+def test_create_database_engine() -> None:
+    engine = create_database_engine(create_test_settings())
+
+    assert isinstance(engine, Engine)
+    assert engine.url.drivername == "sqlite+pysqlite"
+
+    engine.dispose()
+
+
+def test_session_factory_executes_query() -> None:
+    engine = create_database_engine(create_test_settings())
+    session_factory = create_session_factory(engine)
+
+    with session_factory() as session:
+        result = session.execute(text("SELECT 1")).scalar_one()
+
+    assert result == 1
+
+    engine.dispose()
+
+
+def test_get_database_session_closes_session() -> None:
+    engine = create_database_engine(create_test_settings())
+    session_factory = create_session_factory(engine)
+
+    dependency = get_database_session(session_factory)
+    session = next(dependency)
+
+    assert isinstance(session, Session)
+
+    try:
+        next(dependency)
+    except StopIteration:
+        pass
+
+    assert session.is_active is True
+
+    engine.dispose()
+
+        ## 7. Format and validate
+
+                ## uv run ruff format .
+                ## uv run ruff check .
+                ## uv run mypy src
+                ## uv run pytest -v:    5 passed in 1.71s
+
+                ## uv run python main.py
+        
+        ## 9. Return to the parent and inspect Git
+
+                ## cd ..\..
+                ## git status
+
+                ## Commit the database layer
+                    ## git add shared-infrastructure/python
+                    ## git status
+                    ## git commit -m "Add shared SQLAlchemy database layer"
+                    ## git push origin main
+
+## 30)  Phase 2.3 — Shared Enterprise Logging Framework
+
+            ## cd shared-infrastructure\python 
+            
+            ##  Step 1 — Install logging dependencies
+
+                ## uv add python-json-logger
+                ## uv sync
+
+            ## Step 2 — Create the logging files
+
+                ## New-Item src\full_stack_ai_shared\logging\logger.py -ItemType File -Force
+                ## New-Item src\full_stack_ai_shared\logging\formatter.py -ItemType File -Force
+                ## New-Item src\full_stack_ai_shared\logging\request_context.py -ItemType File -Force
+                ## New-Item src\full_stack_ai_shared\logging\middleware.py -ItemType File -Force
+                ## New-Item tests\test_logging.py -ItemType File -Force
+
+            ## Step 3 — Update the logging package export:   
+                        code src\full_stack_ai_shared\logging\__init__.py
+"""Shared logging utilities."""
+
+from full_stack_ai_shared.logging.logger import get_logger
+
+__all__ = ["get_logger"]
+
+            ## Step 4 — Verify the structure
+                        tree src\full_stack_ai_shared\logging /F
+            
+
+            ## Build:  code src\full_stack_ai_shared\logging\logger.py
+
+"""Shared logger factory."""
+
+from __future__ import annotations
+
+import logging
+import sys
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Return a configured logger instance."""
+
+    logger = logging.getLogger(name)
+
+    if logger.handlers:
+        return logger
+
+    logger.setLevel(logging.INFO)
+
+    handler = logging.StreamHandler(sys.stdout)
+
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+    )
+
+    handler.setFormatter(formatter)
+
+    logger.addHandler(handler)
+
+    logger.propagate = False
+
+    return logger
+
+            ## Create a unit test:      code tests\test_logging.py
+
+"""Tests for the shared logger."""
+
+import logging
+
+from full_stack_ai_shared.logging import get_logger
+
+
+def test_get_logger() -> None:
+    logger = get_logger("portfolio")
+
+    assert isinstance(logger, logging.Logger)
+    assert logger.name == "portfolio"
+    assert logger.level == logging.INFO
+
+                ## Step 3 — Validate
+
+                    ## uv run ruff format .
+                    ## uv run ruff check .
+                    ## uv run mypy src
+                    ## uv run pytest -v:    6 passed in 0.58s 
+        
+
+                ## Add request correlation IDs
+
+                    This allows every API request to carry a unique identifier through logs, which is useful for tracing errors across services.
+                
+                    ## code src\full_stack_ai_shared\logging\request_context.py
+
+"""Request-scoped logging context."""
+
+from contextvars import ContextVar
+from uuid import uuid4
+
+_request_id_context: ContextVar[str | None] = ContextVar(
+    "request_id",
+    default=None,
+)
+
+
+def create_request_id() -> str:
+    """Create a new request identifier."""
+
+    return str(uuid4())
+
+
+def set_request_id(request_id: str) -> None:
+    """Store the current request identifier."""
+
+    _request_id_context.set(request_id)
+
+
+def get_request_id() -> str | None:
+    """Return the current request identifier."""
+
+    return _request_id_context.get()
+
+
+def clear_request_id() -> None:
+    """Clear the current request identifier."""
+
+    _request_id_context.set(None)
+
+                ## Update: code src\full_stack_ai_shared\logging\__init__.py
+
+"""Shared logging utilities."""
+
+from full_stack_ai_shared.logging.logger import get_logger
+from full_stack_ai_shared.logging.request_context import (
+    clear_request_id,
+    create_request_id,
+    get_request_id,
+    set_request_id,
+)
+
+__all__ = [
+    "clear_request_id",
+    "create_request_id",
+    "get_logger",
+    "get_request_id",
+    "set_request_id",
+]
+
+                ## Add these tests to tests\test_logging.py: 
+
+"""Tests for the shared logging utilities."""
+
+import logging
+
+from full_stack_ai_shared.logging import (
+    clear_request_id,
+    create_request_id,
+    get_logger,
+    get_request_id,
+    set_request_id,
+)
+
+
+def test_get_logger() -> None:
+    logger = get_logger("portfolio")
+
+    assert isinstance(logger, logging.Logger)
+    assert logger.name == "portfolio"
+    assert logger.level == logging.INFO
+
+
+def test_request_id_context() -> None:
+    request_id = create_request_id()
+
+    set_request_id(request_id)
+
+    assert get_request_id() == request_id
+
+    clear_request_id()
+
+    assert get_request_id() is None
+
+
+def test_create_request_id_is_unique() -> None:
+    first = create_request_id()
+    second = create_request_id()
+
+    assert first != second
+
+            ## Run
+               ## uv run ruff format tests\test_logging.py
+                ## uv run ruff check .
+                ## uv run mypy src
+                ## uv run pytest -v:    8 passed in 0.46s
+            
+            ## Add the request ID to every log record
+                ## code src\full_stack_ai_shared\logging\formatter.py
+"""Logging formatters and filters."""
+
+import logging
+
+from full_stack_ai_shared.logging.request_context import get_request_id
+
+
+class RequestContextFilter(logging.Filter):
+    """Attach the current request ID to each log record."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = get_request_id() or "-"
+        return True
+
+
+def create_console_formatter() -> logging.Formatter:
+    """Create the standard console log formatter."""
+
+    return logging.Formatter(
+        "%(asctime)s | %(levelname)-8s | %(name)s | "
+        "request_id=%(request_id)s | %(message)s"
+    )
+            ##  Update: code src\full_stack_ai_shared\logging\logger.py
+
+"""Shared logger factory."""
+
+from __future__ import annotations
+
+import logging
+import sys
+
+from full_stack_ai_shared.logging.formatter import (
+    RequestContextFilter,
+    create_console_formatter,
+)
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Return a configured logger instance."""
+
+    logger = logging.getLogger(name)
+
+    if logger.handlers:
+        return logger
+
+    logger.setLevel(logging.INFO)
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.addFilter(RequestContextFilter())
+    handler.setFormatter(create_console_formatter())
+
+    logger.addHandler(handler)
+    logger.propagate = False
+
+    return logger
+
+            ##  code tests\test_logging.py
+"""Tests for the shared logging utilities."""
+
+import logging
+
+from full_stack_ai_shared.logging import (
+    clear_request_id,
+    create_request_id,
+    get_logger,
+    get_request_id,
+    set_request_id,
+)
+
+
+def test_get_logger() -> None:
+    logger = get_logger("portfolio")
+
+    assert isinstance(logger, logging.Logger)
+    assert logger.name == "portfolio"
+    assert logger.level == logging.INFO
+
+
+def test_request_id_context() -> None:
+    request_id = create_request_id()
+
+    set_request_id(request_id)
+
+    assert get_request_id() == request_id
+
+    clear_request_id()
+
+    assert get_request_id() is None
+
+
+def test_create_request_id_is_unique() -> None:
+    first = create_request_id()
+    second = create_request_id()
+
+    assert first != second
+
+
+def test_logger_includes_request_id() -> None:
+    logger = get_logger("portfolio.request-context")
+    request_id = create_request_id()
+    set_request_id(request_id)
+
+    try:
+        handler = logger.handlers[0]
+
+        record = logger.makeRecord(
+            logger.name,
+            logging.INFO,
+            __file__,
+            1,
+            "test message",
+            (),
+            None,
+        )
+
+        for log_filter in handler.filters:
+            log_filter.filter(record)
+
+        formatted_message = handler.format(record)
+
+        assert request_id in formatted_message
+        assert "test message" in formatted_message
+    finally:
+        clear_request_id()
+
+                ## Run:
+                    uv run ruff format tests\test_logging.py
+                    uv run ruff check .
+                    uv run mypy src
+                    uv run pytest -v
+
+                ## Add FastAPI request logging middleware
+
+                    ## nstall FastAPI as a shared dependency: 
+                        uv add fastapi
+                        uv sync
+                    ## code src\full_stack_ai_shared\logging\middleware.py
+"""FastAPI request logging middleware."""
+
+from __future__ import annotations
+
+from time import perf_counter
+from typing import Final
+
+from fastapi import Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+
+from full_stack_ai_shared.logging.logger import get_logger
+from full_stack_ai_shared.logging.request_context import (
+    clear_request_id,
+    create_request_id,
+    set_request_id,
+)
+
+REQUEST_ID_HEADER: Final[str] = "X-Request-ID"
+
+logger = get_logger(__name__)
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Log HTTP requests and attach a request ID to each response."""
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
+        request_id = request.headers.get(REQUEST_ID_HEADER) or create_request_id()
+        set_request_id(request_id)
+
+        started_at = perf_counter()
+
+        try:
+            response = await call_next(request)
+
+            duration_ms = (perf_counter() - started_at) * 1000
+
+            logger.info(
+                "%s %s completed with status %s in %.2f ms",
+                request.method,
+                request.url.path,
+                response.status_code,
+                duration_ms,
+            )
+
+            response.headers[REQUEST_ID_HEADER] = request_id
+            return response
+        except Exception:
+            duration_ms = (perf_counter() - started_at) * 1000
+
+            logger.exception(
+                "%s %s failed after %.2f ms",
+                request.method,
+                request.url.path,
+                duration_ms,
+            )
+
+            raise
+        finally:
+            clear_request_id()
+
+            ## Update: code src\full_stack_ai_shared\logging\__init__.py
+
+"""Shared logging utilities."""
+
+from full_stack_ai_shared.logging.logger import get_logger
+from full_stack_ai_shared.logging.middleware import (
+    REQUEST_ID_HEADER,
+    RequestLoggingMiddleware,
+)
+from full_stack_ai_shared.logging.request_context import (
+    clear_request_id,
+    create_request_id,
+    get_request_id,
+    set_request_id,
+)
+
+__all__ = [
+    "REQUEST_ID_HEADER",
+    "RequestLoggingMiddleware",
+    "clear_request_id",
+    "create_request_id",
+    "get_logger",
+    "get_request_id",
+    "set_request_id",
+]
+
+            ## code tests\test_logging_middleware.py
+"""Tests for FastAPI request logging middleware."""
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from full_stack_ai_shared.logging import (
+    REQUEST_ID_HEADER,
+    RequestLoggingMiddleware,
+)
+
+
+def create_test_app() -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(RequestLoggingMiddleware)
+
+    @app.get("/health")
+    async def health_check() -> dict[str, str]:
+        return {"status": "healthy"}
+
+    return app
+
+
+def test_middleware_generates_request_id() -> None:
+    client = TestClient(create_test_app())
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.headers[REQUEST_ID_HEADER]
+
+
+def test_middleware_preserves_request_id() -> None:
+    client = TestClient(create_test_app())
+    request_id = "test-request-123"
+
+    response = client.get(
+        "/health",
+        headers={REQUEST_ID_HEADER: request_id},
+    )
+
+    assert response.status_code == 200
+    assert response.headers[REQUEST_ID_HEADER] == request_id
+
+            ## Run
+
+            uv run ruff format .
+            uv run ruff check .
+            uv run mypy src
+            uv run pytest -v:   11 passed in 1.10s
+
+            uv add --dev httpx2
+            uv sync
+        ## Run
+           cd ..\..
+            git add shared-infrastructure/python
+            git status.
+            git commit -m "Add shared request logging framework"
+            git push origin main
+            git status
+            git log --oneline
+
+## 31)  Phase 2.4 — Shared API & Exception Framework:
+
+        ## Step 1 — Create the directories
+
+                    New-Item src\full_stack_ai_shared\api -ItemType Directory -Force
+                    New-Item src\full_stack_ai_shared\exceptions -ItemType Directory -Force
+
+        ## Step 2 — Create the files
+
+                    New-Item src\full_stack_ai_shared\api\__init__.py -ItemType File -Force
+                    New-Item src\full_stack_ai_shared\api\responses.py -ItemType File -Force
+                    New-Item src\full_stack_ai_shared\api\health.py -ItemType File -Force
+
+                    New-Item src\full_stack_ai_shared\exceptions\__init__.py -ItemType File -Force
+                    New-Item src\full_stack_ai_shared\exceptions\errors.py -ItemType File -Force
+                    New-Item src\full_stack_ai_shared\exceptions\handlers.py -ItemType File -Force
+
+                    New-Item tests\test_api.py -ItemType File -Force
+                    New-Item tests\test_exceptions.py -ItemType File -Force
+
+## Step 3 — Verify
+
+            tree src\full_stack_ai_shared /F
+
+## Step 1: Implement reusable API response models: code src\full_stack_ai_shared\api\responses.py
+
+"""Reusable API response models."""
+
+from typing import Generic, TypeVar
+
+from pydantic import BaseModel, Field
+
+DataT = TypeVar("DataT")
+
+
+class SuccessResponse(BaseModel, Generic[DataT]):
+    """Standard successful API response."""
+
+    success: bool = True
+    message: str
+    data: DataT | None = None
+
+
+class ErrorDetail(BaseModel):
+    """Structured API error information."""
+
+    code: str
+    message: str
+    field: str | None = None
+
+
+class ErrorResponse(BaseModel):
+    """Standard API error response."""
+
+    success: bool = False
+    message: str
+    errors: list[ErrorDetail] = Field(default_factory=list)
+    request_id: str | None = None
+
+## Step 2: Export the response models: code src\full_stack_ai_shared\api\__init__.py
+
+"""Shared API utilities."""
+
+from full_stack_ai_shared.api.responses import (
+    ErrorDetail,
+    ErrorResponse,
+    SuccessResponse,
+)
+
+__all__ = [
+    "ErrorDetail",
+    "ErrorResponse",
+    "SuccessResponse",
+]
+
+## Step 3: Add response-model tests:    code tests\test_api.py
+
+"""Tests for shared API response models."""
+
+from full_stack_ai_shared.api import (
+    ErrorDetail,
+    ErrorResponse,
+    SuccessResponse,
+)
+
+
+def test_success_response() -> None:
+    response = SuccessResponse[dict[str, str]](
+        message="Operation completed.",
+        data={"status": "ready"},
+    )
+
+    assert response.success is True
+    assert response.message == "Operation completed."
+    assert response.data == {"status": "ready"}
+
+
+def test_error_response() -> None:
+    response = ErrorResponse(
+        message="Validation failed.",
+        errors=[
+            ErrorDetail(
+                code="invalid_value",
+                message="The supplied value is invalid.",
+                field="name",
+            )
+        ],
+        request_id="request-123",
+    )
+
+    assert response.success is False
+    assert response.request_id == "request-123"
+    assert response.errors[0].code == "invalid_value"
+    assert response.errors[0].field == "name"
+
+
+def test_error_response_defaults_to_empty_errors() -> None:
+    response = ErrorResponse(message="Unexpected error.")
+
+    assert response.errors == []
+
+## Verify:
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Implement the reusable health endpoint
+
+code src\full_stack_ai_shared\api\health.py
+
+"""Reusable health-check API router."""
+
+from datetime import UTC, datetime
+
+from fastapi import APIRouter
+
+from full_stack_ai_shared import __version__
+from full_stack_ai_shared.api.responses import SuccessResponse
+
+health_router = APIRouter(tags=["Health"])
+
+
+@health_router.get(
+    "/health",
+    response_model=SuccessResponse[dict[str, str]],
+)
+async def health_check() -> SuccessResponse[dict[str, str]]:
+    """Return the shared service health status."""
+
+    return SuccessResponse(
+        message="Service is healthy.",
+        data={
+            "status": "healthy",
+            "version": __version__,
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
+    )
+
+## Update: code src\full_stack_ai_shared\api\__init__.py
+
+"""Shared API utilities."""
+
+from full_stack_ai_shared.api.health import health_router
+from full_stack_ai_shared.api.responses import (
+    ErrorDetail,
+    ErrorResponse,
+    SuccessResponse,
+)
+
+__all__ = [
+    "ErrorDetail",
+    "ErrorResponse",
+    "SuccessResponse",
+    "health_router",
+]
+
+## Add health endpoint tests code tests\test_api.p
+
+"""Tests for shared API utilities."""
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from full_stack_ai_shared.api import (
+    ErrorDetail,
+    ErrorResponse,
+    SuccessResponse,
+    health_router,
+)
+
+
+def create_test_app() -> FastAPI:
+    app = FastAPI()
+    app.include_router(health_router, prefix="/api/v1")
+    return app
+
+
+def test_success_response() -> None:
+    response = SuccessResponse[dict[str, str]](
+        message="Operation completed.",
+        data={"status": "ready"},
+    )
+
+    assert response.success is True
+    assert response.message == "Operation completed."
+    assert response.data == {"status": "ready"}
+
+
+def test_error_response() -> None:
+    response = ErrorResponse(
+        message="Validation failed.",
+        errors=[
+            ErrorDetail(
+                code="invalid_value",
+                message="The supplied value is invalid.",
+                field="name",
+            )
+        ],
+        request_id="request-123",
+    )
+
+    assert response.success is False
+    assert response.request_id == "request-123"
+    assert response.errors[0].code == "invalid_value"
+    assert response.errors[0].field == "name"
+
+
+def test_error_response_defaults_to_empty_errors() -> None:
+    response = ErrorResponse(message="Unexpected error.")
+
+    assert response.errors == []
+
+
+def test_health_endpoint() -> None:
+    client = TestClient(create_test_app())
+
+    response = client.get("/api/v1/health")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["success"] is True
+    assert payload["message"] == "Service is healthy."
+    assert payload["data"]["status"] == "healthy"
+    assert payload["data"]["version"] == "0.1.0"
+    assert payload["data"]["timestamp"]
+
+## Run
+uv run ruff format tests\test_api.py
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Implement custom exceptions:
+
+## code src\full_stack_ai_shared\exceptions\errors.py
+
+"""Custom application exceptions."""
+
+from __future__ import annotations
+
+
+class ApplicationError(Exception):
+    """Base exception for application-level errors."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "application_error",
+        status_code: int = 400,
+        field: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.code = code
+        self.status_code = status_code
+        self.field = field
+
+
+class NotFoundError(ApplicationError):
+    """Raised when a requested resource cannot be found."""
+
+    def __init__(
+        self,
+        message: str = "Resource not found.",
+        *,
+        code: str = "not_found",
+    ) -> None:
+        super().__init__(
+            message,
+            code=code,
+            status_code=404,
+        )
+
+
+class ConflictError(ApplicationError):
+    """Raised when a request conflicts with existing state."""
+
+    def __init__(
+        self,
+        message: str = "Resource conflict.",
+        *,
+        code: str = "conflict",
+        field: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=code,
+            status_code=409,
+            field=field,
+        )
+
+
+class ValidationError(ApplicationError):
+    """Raised when application-level validation fails."""
+
+    def __init__(
+        self,
+        message: str = "Validation failed.",
+        *,
+        code: str = "validation_error",
+        field: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=code,
+            status_code=422,
+            field=field,
+        )
+
+## Update: code src\full_stack_ai_shared\exceptions\__init__.py
+
+"""Shared application exceptions."""
+
+from full_stack_ai_shared.exceptions.errors import (
+    ApplicationError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
+
+__all__ = [
+    "ApplicationError",
+    "ConflictError",
+    "NotFoundError",
+    "ValidationError",
+]
+
+## Add exception tests: code tests\test_exceptions.py
+
+"""Tests for shared application exceptions."""
+
+from full_stack_ai_shared.exceptions import (
+    ApplicationError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
+
+
+def test_application_error() -> None:
+    error = ApplicationError(
+        "Operation failed.",
+        code="operation_failed",
+        status_code=400,
+        field="name",
+    )
+
+    assert str(error) == "Operation failed."
+    assert error.message == "Operation failed."
+    assert error.code == "operation_failed"
+    assert error.status_code == 400
+    assert error.field == "name"
+
+
+def test_not_found_error() -> None:
+    error = NotFoundError("Asset not found.")
+
+    assert error.status_code == 404
+    assert error.code == "not_found"
+    assert error.message == "Asset not found."
+
+
+def test_conflict_error() -> None:
+    error = ConflictError(
+        "Asset already exists.",
+        field="asset_id",
+    )
+
+    assert error.status_code == 409
+    assert error.code == "conflict"
+    assert error.field == "asset_id"
+
+
+def test_validation_error() -> None:
+    error = ValidationError(
+        "Amount must be positive.",
+        field="amount",
+    )
+
+    assert error.status_code == 422
+    assert error.code == "validation_error"
+    assert error.field == "amount"
+
+## Run
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Add global FastAPI exception handlers
+
+## Implement:   code src\full_stack_ai_shared\exceptions\handlers.py
+
+"""FastAPI exception handlers."""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from typing import Any, cast
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.responses import Response
+
+from full_stack_ai_shared.api import ErrorDetail, ErrorResponse
+from full_stack_ai_shared.exceptions.errors import ApplicationError
+from full_stack_ai_shared.logging import get_logger, get_request_id
+
+logger = get_logger(__name__)
+
+ExceptionHandler = Callable[
+    [Request, Exception],
+    Response | Awaitable[Response],
+]
+
+
+def build_error_response(
+    *,
+    message: str,
+    errors: list[ErrorDetail],
+) -> dict[str, Any]:
+    """Build a serializable standard error response."""
+
+    response = ErrorResponse(
+        message=message,
+        errors=errors,
+        request_id=get_request_id(),
+    )
+    return response.model_dump()
+
+
+async def application_error_handler(
+    request: Request,
+    exc: ApplicationError,
+) -> JSONResponse:
+    """Handle known application exceptions."""
+
+    logger.warning(
+        "%s %s failed: %s",
+        request.method,
+        request.url.path,
+        exc.message,
+    )
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=build_error_response(
+            message=exc.message,
+            errors=[
+                ErrorDetail(
+                    code=exc.code,
+                    message=exc.message,
+                    field=exc.field,
+                )
+            ],
+        ),
+    )
+
+
+async def request_validation_error_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    """Handle FastAPI request-validation failures."""
+
+    errors = [
+        ErrorDetail(
+            code=str(error["type"]),
+            message=str(error["msg"]),
+            field=".".join(str(part) for part in error["loc"]),
+        )
+        for error in exc.errors()
+    ]
+
+    logger.warning(
+        "%s %s validation failed",
+        request.method,
+        request.url.path,
+    )
+
+    return JSONResponse(
+        status_code=422,
+        content=build_error_response(
+            message="Request validation failed.",
+            errors=errors,
+        ),
+    )
+
+
+async def unhandled_exception_handler(
+    request: Request,
+    exc: Exception,
+) -> JSONResponse:
+    """Handle unexpected exceptions without exposing internal details."""
+
+    logger.exception(
+        "%s %s raised an unexpected exception",
+        request.method,
+        request.url.path,
+        exc_info=exc,
+    )
+
+    return JSONResponse(
+        status_code=500,
+        content=build_error_response(
+            message="An unexpected error occurred.",
+            errors=[
+                ErrorDetail(
+                    code="internal_server_error",
+                    message="The server could not complete the request.",
+                )
+            ],
+        ),
+    )
+
+
+def register_exception_handlers(app: FastAPI) -> None:
+    """Register all shared exception handlers on a FastAPI application."""
+
+    app.add_exception_handler(
+        ApplicationError,
+        cast(ExceptionHandler, application_error_handler),
+    )
+    app.add_exception_handler(
+        RequestValidationError,
+        cast(ExceptionHandler, request_validation_error_handler),
+    )
+    app.add_exception_handler(
+        Exception,
+        unhandled_exception_handler,
+    )
+
+## Update: code src\full_stack_ai_shared\exceptions\__init__.py
+
+"""Shared application exceptions."""
+
+from full_stack_ai_shared.exceptions.errors import (
+    ApplicationError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
+from full_stack_ai_shared.exceptions.handlers import (
+    register_exception_handlers,
+)
+
+__all__ = [
+    "ApplicationError",
+    "ConflictError",
+    "NotFoundError",
+    "ValidationError",
+    "register_exception_handlers",
+]
+
+## Replace: code tests\test_exceptions.py
+
+"""Tests for shared exceptions and FastAPI handlers."""
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+
+from full_stack_ai_shared.exceptions import (
+    ApplicationError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+    register_exception_handlers,
+)
+from full_stack_ai_shared.logging import RequestLoggingMiddleware
+
+
+class ItemRequest(BaseModel):
+    """Test request model."""
+
+    quantity: int
+
+
+def create_test_app() -> FastAPI:
+    """Create a FastAPI application with shared handlers."""
+
+    app = FastAPI()
+    app.add_middleware(RequestLoggingMiddleware)
+    register_exception_handlers(app)
+
+    @app.get("/missing")
+    async def missing() -> None:
+        raise NotFoundError("Asset not found.")
+
+    @app.get("/conflict")
+    async def conflict() -> None:
+        raise ConflictError(
+            "Asset already exists.",
+            field="asset_id",
+        )
+
+    @app.post("/items")
+    async def create_item(payload: ItemRequest) -> dict[str, int]:
+        return {"quantity": payload.quantity}
+
+    @app.get("/unexpected")
+    async def unexpected() -> None:
+        raise RuntimeError("Sensitive internal failure.")
+
+    return app
+
+
+def test_application_error() -> None:
+    error = ApplicationError(
+        "Operation failed.",
+        code="operation_failed",
+        status_code=400,
+        field="name",
+    )
+
+    assert str(error) == "Operation failed."
+    assert error.message == "Operation failed."
+    assert error.code == "operation_failed"
+    assert error.status_code == 400
+    assert error.field == "name"
+
+
+def test_not_found_error() -> None:
+    error = NotFoundError("Asset not found.")
+
+    assert error.status_code == 404
+    assert error.code == "not_found"
+    assert error.message == "Asset not found."
+
+
+def test_conflict_error() -> None:
+    error = ConflictError(
+        "Asset already exists.",
+        field="asset_id",
+    )
+
+    assert error.status_code == 409
+    assert error.code == "conflict"
+    assert error.field == "asset_id"
+
+
+def test_validation_error() -> None:
+    error = ValidationError(
+        "Amount must be positive.",
+        field="amount",
+    )
+
+    assert error.status_code == 422
+    assert error.code == "validation_error"
+    assert error.field == "amount"
+
+
+def test_application_exception_handler() -> None:
+    client = TestClient(create_test_app())
+
+    response = client.get("/missing")
+    payload = response.json()
+
+    assert response.status_code == 404
+    assert payload["success"] is False
+    assert payload["message"] == "Asset not found."
+    assert payload["errors"][0]["code"] == "not_found"
+    assert payload["request_id"]
+
+
+def test_conflict_exception_handler() -> None:
+    client = TestClient(create_test_app())
+
+    response = client.get("/conflict")
+    payload = response.json()
+
+    assert response.status_code == 409
+    assert payload["errors"][0]["code"] == "conflict"
+    assert payload["errors"][0]["field"] == "asset_id"
+
+
+def test_request_validation_exception_handler() -> None:
+    client = TestClient(create_test_app())
+
+    response = client.post(
+        "/items",
+        json={"quantity": "invalid"},
+    )
+    payload = response.json()
+
+    assert response.status_code == 422
+    assert payload["success"] is False
+    assert payload["message"] == "Request validation failed."
+    assert payload["errors"]
+    assert payload["errors"][0]["field"] == "body.quantity"
+
+
+def test_unhandled_exception_handler() -> None:
+    client = TestClient(
+        create_test_app(),
+        raise_server_exceptions=False,
+    )
+
+    response = client.get("/unexpected")
+    payload = response.json()
+
+    assert response.status_code == 500
+    assert payload["success"] is False
+    assert payload["message"] == "An unexpected error occurred."
+    assert payload["errors"][0]["code"] == "internal_server_error"
+    assert "Sensitive internal failure" not in response.text
+
+## Verify everything
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Commit the changes from parent:
+
+cd ..\..
+git add shared-infrastructure/python
+git status
+git commit -m "Add shared API and exception framework"
+git push origin main
+git status
+git log --oneline
+
+## Shared authentication and security
+
+# Move into : cd shared-infrastructure\python
+
+## Install authentication dependencies: 
+uv add "pwdlib[argon2]" pyjwt
+uv sync
+
+## create folders and files
+
+New-Item src\full_stack_ai_shared\auth -ItemType Directory -Force
+New-Item src\full_stack_ai_shared\security -ItemType Directory -Force
+
+New-Item src\full_stack_ai_shared\auth\__init__.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\auth\passwords.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\auth\tokens.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\auth\dependencies.py -ItemType File -Force
+
+New-Item src\full_stack_ai_shared\security\__init__.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\security\settings.py -ItemType File -Force
+
+New-Item tests\test_auth.py -ItemType File -Force
+
+## Implement password hashing: code src\full_stack_ai_shared\auth\passwords.py
+
+"""Password hashing and verification utilities."""
+
+from pwdlib import PasswordHash
+
+_password_hash = PasswordHash.recommended()
+
+
+def hash_password(password: str) -> str:
+    """Return a secure hash for a plaintext password."""
+
+    if not password:
+        raise ValueError("Password cannot be empty.")
+
+    return _password_hash.hash(password)
+
+
+def verify_password(
+    plain_password: str,
+    hashed_password: str,
+) -> bool:
+    """Return whether a plaintext password matches a stored hash."""
+
+    if not plain_password or not hashed_password:
+        return False
+
+    return _password_hash.verify(
+        plain_password,
+        hashed_password,
+    )
+
+## Export password utilities: code src\full_stack_ai_shared\auth\__init__.py
+
+"""Shared authentication utilities."""
+
+from full_stack_ai_shared.auth.passwords import (
+    hash_password,
+    verify_password,
+)
+
+__all__ = [
+    "hash_password",
+    "verify_password",
+]
+
+## code tests\test_auth.py
+
+"""Tests for shared authentication utilities."""
+
+import pytest
+
+from full_stack_ai_shared.auth import (
+    hash_password,
+    verify_password,
+)
+
+
+def test_hash_password() -> None:
+    password = "StrongPassword123!"
+    hashed_password = hash_password(password)
+
+    assert hashed_password != password
+    assert verify_password(password, hashed_password) is True
+
+
+def test_verify_password_rejects_invalid_password() -> None:
+    hashed_password = hash_password("CorrectPassword123!")
+
+    assert verify_password(
+        "WrongPassword123!",
+        hashed_password,
+    ) is False
+
+
+def test_hash_password_uses_unique_salt() -> None:
+    password = "StrongPassword123!"
+
+    first_hash = hash_password(password)
+    second_hash = hash_password(password)
+
+    assert first_hash != second_hash
+    assert verify_password(password, first_hash) is True
+    assert verify_password(password, second_hash) is True
+
+
+def test_hash_password_rejects_empty_password() -> None:
+    with pytest.raises(
+        ValueError,
+        match="Password cannot be empty",
+    ):
+        hash_password("")
+
+
+def test_verify_password_rejects_empty_values() -> None:
+    assert verify_password("", "stored-hash") is False
+    assert verify_password("password", "") is False
+
+## Verify
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Add JWT access tokens
+
+## code src\full_stack_ai_shared\security\settings.py
+
+"""Authentication and token settings."""
+
+from pydantic import BaseModel, Field
+
+
+class TokenSettings(BaseModel):
+    """JWT configuration."""
+
+    secret_key: str = Field(min_length=32)
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = Field(default=30, gt=0)
+    issuer: str = "full-stack-ai-portfolio"
+    audience: str = "full-stack-ai-applications"
+
+## code src\full_stack_ai_shared\security\__init__.py
+
+"""Shared security settings."""
+
+from full_stack_ai_shared.security.settings import TokenSettings
+
+__all__ = ["TokenSettings"]
+
+## code src\full_stack_ai_shared\auth\tokens.py
+
+"""JWT access-token creation and validation."""
+
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import jwt
+from jwt import ExpiredSignatureError, InvalidTokenError
+from pydantic import BaseModel
+
+from full_stack_ai_shared.security import TokenSettings
+
+
+class TokenPayload(BaseModel):
+    """Validated JWT payload."""
+
+    subject: str
+    issued_at: datetime
+    expires_at: datetime
+    issuer: str
+    audience: str
+
+
+class TokenError(ValueError):
+    """Raised when an access token cannot be validated."""
+
+
+def create_access_token(
+    subject: str,
+    settings: TokenSettings,
+    *,
+    expires_delta: timedelta | None = None,
+    additional_claims: dict[str, Any] | None = None,
+) -> str:
+    """Create a signed JWT access token."""
+
+    if not subject.strip():
+        raise ValueError("Token subject cannot be empty.")
+
+    issued_at = datetime.now(UTC)
+    expires_at = issued_at + (
+        expires_delta
+        or timedelta(minutes=settings.access_token_expire_minutes)
+    )
+
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "iat": issued_at,
+        "exp": expires_at,
+        "iss": settings.issuer,
+        "aud": settings.audience,
+    }
+
+    if additional_claims:
+        protected_claims = {"sub", "iat", "exp", "iss", "aud"}
+        conflicting_claims = protected_claims.intersection(additional_claims)
+
+        if conflicting_claims:
+            names = ", ".join(sorted(conflicting_claims))
+            raise ValueError(
+                f"Additional claims cannot override protected claims: {names}"
+            )
+
+        payload.update(additional_claims)
+
+    return jwt.encode(
+        payload,
+        settings.secret_key,
+        algorithm=settings.algorithm,
+    )
+
+
+def decode_access_token(
+    token: str,
+    settings: TokenSettings,
+) -> TokenPayload:
+    """Decode and validate a JWT access token."""
+
+    if not token:
+        raise TokenError("Access token cannot be empty.")
+
+    try:
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.algorithm],
+            audience=settings.audience,
+            issuer=settings.issuer,
+        )
+    except ExpiredSignatureError as exc:
+        raise TokenError("Access token has expired.") from exc
+    except InvalidTokenError as exc:
+        raise TokenError("Access token is invalid.") from exc
+
+    subject = payload.get("sub")
+
+    if not isinstance(subject, str) or not subject:
+        raise TokenError("Access token subject is invalid.")
+
+    return TokenPayload(
+        subject=subject,
+        issued_at=datetime.fromtimestamp(payload["iat"], tz=UTC),
+        expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
+        issuer=payload["iss"],
+        audience=payload["aud"],
+    )
+
+## code src\full_stack_ai_shared\auth\__init__.py
+
+"""Shared authentication utilities."""
+
+from full_stack_ai_shared.auth.passwords import (
+    hash_password,
+    verify_password,
+)
+from full_stack_ai_shared.auth.tokens import (
+    TokenError,
+    TokenPayload,
+    create_access_token,
+    decode_access_token,
+)
+
+__all__ = [
+    "TokenError",
+    "TokenPayload",
+    "create_access_token",
+    "decode_access_token",
+    "hash_password",
+    "verify_password",
+]
+
+## code tests\test_auth.py:
+
+from datetime import timedelta
+
+import jwt
+
+from full_stack_ai_shared.auth import (
+    TokenError,
+    create_access_token,
+    decode_access_token,
+)
+from full_stack_ai_shared.security import TokenSettings
+
+
+def create_token_settings() -> TokenSettings:
+    return TokenSettings(
+        secret_key="test-secret-key-that-is-at-least-32-characters",
+        access_token_expire_minutes=30,
+    )
+
+
+def test_create_and_decode_access_token() -> None:
+    settings = create_token_settings()
+
+    token = create_access_token("user-123", settings)
+    payload = decode_access_token(token, settings)
+
+    assert payload.subject == "user-123"
+    assert payload.issuer == settings.issuer
+    assert payload.audience == settings.audience
+    assert payload.expires_at > payload.issued_at
+
+
+def test_create_access_token_rejects_empty_subject() -> None:
+    settings = create_token_settings()
+
+    with pytest.raises(
+        ValueError,
+        match="Token subject cannot be empty",
+    ):
+        create_access_token("", settings)
+
+
+def test_access_token_rejects_protected_claim_override() -> None:
+    settings = create_token_settings()
+
+    with pytest.raises(
+        ValueError,
+        match="cannot override protected claims",
+    ):
+        create_access_token(
+            "user-123",
+            settings,
+            additional_claims={"sub": "other-user"},
+        )
+
+
+def test_decode_access_token_rejects_expired_token() -> None:
+    settings = create_token_settings()
+
+    token = create_access_token(
+        "user-123",
+        settings,
+        expires_delta=timedelta(seconds=-1),
+    )
+
+    with pytest.raises(
+        TokenError,
+        match="Access token has expired",
+    ):
+        decode_access_token(token, settings)
+
+
+def test_decode_access_token_rejects_invalid_signature() -> None:
+    settings = create_token_settings()
+    different_settings = TokenSettings(
+        secret_key="different-secret-key-that-is-also-long-enough",
+    )
+
+    token = create_access_token("user-123", settings)
+
+    with pytest.raises(
+        TokenError,
+        match="Access token is invalid",
+    ):
+        decode_access_token(token, different_settings)
+
+
+def test_decode_access_token_rejects_missing_subject() -> None:
+    settings = create_token_settings()
+
+    token = jwt.encode(
+        {
+            "iat": 1_700_000_000,
+            "exp": 4_000_000_000,
+            "iss": settings.issuer,
+            "aud": settings.audience,
+        },
+        settings.secret_key,
+        algorithm=settings.algorithm,
+    )
+
+    with pytest.raises(
+        TokenError,
+        match="Access token subject is invalid",
+    ):
+        decode_access_token(token, settings)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            
+
+
+
+
+
+                    
+
