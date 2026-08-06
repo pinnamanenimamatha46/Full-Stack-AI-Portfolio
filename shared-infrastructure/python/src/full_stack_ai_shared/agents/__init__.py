@@ -18,6 +18,11 @@ from full_stack_ai_shared.agents.memory import (
     MemoryEntry,
 )
 from full_stack_ai_shared.agents.orchestrator import AgentOrchestrator
+from full_stack_ai_shared.agents.planning import (
+    AgentPlan,
+    AgentPlanStep,
+    PlanStepStatus,
+)
 from full_stack_ai_shared.agents.registry import AgentRegistry
 from full_stack_ai_shared.agents.state import (
     AgentState,
@@ -40,4 +45,7 @@ __all__ = [
     "AgentStatus",
     "BaseAgent",
     "MemoryEntry",
+    "AgentPlan",
+    "AgentPlanStep",
+    "PlanStepStatus",
 ]
