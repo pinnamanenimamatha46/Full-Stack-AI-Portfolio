@@ -8608,3 +8608,1819 @@ git commit -m "Add shared AI tool framework"
 git push origin main
 git status
 
+## Step 16 — Shared Multi-Agent Orchestrator
+
+## Step 16.1 — Create the new files
+
+@(
+    "src\full_stack_ai_shared\agents\registry.py",
+    "src\full_stack_ai_shared\agents\exceptions.py",
+    "src\full_stack_ai_shared\agents\orchestrator.py",
+    "tests\test_agent_registry.py",
+    "tests\test_agent_exceptions.py",
+    "tests\test_orchestrator.py"
+) | ForEach-Object {
+    New-Item -ItemType File -Force $_ | Out-Null
+}
+
+## Step 16.1 — Build the Agent Registry
+
+code src\full_stack_ai_shared\agents\registry.py
+
+"""Registry for discovering and retrieving shared AI agents."""
+
+from collections.abc import Iterator
+
+from full_stack_ai_shared.agents.base import BaseAgent
+
+
+class AgentRegistry:
+    """Store and manage named AI-agent instances."""
+
+    def __init__(self) -> None:
+        """Initialize an empty agent registry."""
+        self._agents: dict[str, BaseAgent] = {}
+
+    def register(self, agent: BaseAgent) -> None:
+        """Register an agent using its unique name."""
+        agent_name = agent.name.strip()
+
+        if not agent_name:
+            raise ValueError("Agent name must not be empty.")
+
+        if agent_name in self._agents:
+            raise ValueError(f"Agent '{agent_name}' is already registered.")
+
+        self._agents[agent_name] = agent
+
+    def get(self, agent_name: str) -> BaseAgent:
+        """Return an agent registered under the supplied name."""
+        normalized_name = agent_name.strip()
+
+        if not normalized_name:
+            raise ValueError("Agent name must not be empty.")
+
+        try:
+            return self._agents[normalized_name]
+        except KeyError as error:
+            raise KeyError(
+                f"Agent '{normalized_name}' is not registered."
+            ) from error
+
+    def unregister(self, agent_name: str) -> BaseAgent:
+        """Remove and return a registered agent."""
+        normalized_name = agent_name.strip()
+
+        if not normalized_name:
+            raise ValueError("Agent name must not be empty.")
+
+        try:
+            return self._agents.pop(normalized_name)
+        except KeyError as error:
+            raise KeyError(
+                f"Agent '{normalized_name}' is not registered."
+            ) from error
+
+    def contains(self, agent_name: str) -> bool:
+        """Return whether an agent name exists in the registry."""
+        return agent_name.strip() in self._agents
+
+    def list_names(self) -> list[str]:
+        """Return all registered agent names in insertion order."""
+        return list(self._agents)
+
+    def clear(self) -> None:
+        """Remove all registered agents."""
+        self._agents.clear()
+
+    def __len__(self) -> int:
+        """Return the number of registered agents."""
+        return len(self._agents)
+
+    def __iter__(self) -> Iterator[BaseAgent]:
+        """Iterate over registered agents."""
+        return iter(self._agents.values())
+
+## Step 16.2 — Add - code tests\test_agent_registry.py
+
+"""Tests for the shared AI-agent registry."""
+
+import pytest
+
+from full_stack_ai_shared.agents import (
+    AgentRegistry,
+    AgentRequest,
+    AgentResult,
+    BaseAgent,
+)
+
+
+class TestAgent(BaseAgent):
+    """Simple agent implementation used for registry tests."""
+
+    async def run(self, request: AgentRequest) -> AgentResult:
+        """Return the submitted task as a successful result."""
+        return AgentResult(
+            agent_name=self.name,
+            success=True,
+            output=request.task,
+        )
+
+
+def test_agent_registry_starts_empty() -> None:
+    """Registry should contain no agents after initialization."""
+    registry = AgentRegistry()
+
+    assert len(registry) == 0
+    assert registry.list_names() == []
+
+
+def test_agent_registry_registers_agent() -> None:
+    """Registry should store an agent by name."""
+    registry = AgentRegistry()
+    agent = TestAgent(name="diagnostic-agent")
+
+    registry.register(agent)
+
+    assert len(registry) == 1
+    assert registry.contains("diagnostic-agent")
+    assert registry.get("diagnostic-agent") is agent
+
+
+def test_agent_registry_rejects_duplicate_agent_name() -> None:
+    """Registry should reject agents with duplicate names."""
+    registry = AgentRegistry()
+    first_agent = TestAgent(name="diagnostic-agent")
+    second_agent = TestAgent(name="diagnostic-agent")
+
+    registry.register(first_agent)
+
+    with pytest.raises(
+        ValueError,
+        match="Agent 'diagnostic-agent' is already registered.",
+    ):
+        registry.register(second_agent)
+
+
+def test_agent_registry_get_rejects_unknown_agent() -> None:
+    """Registry should reject requests for unknown agents."""
+    registry = AgentRegistry()
+
+    with pytest.raises(
+        KeyError,
+        match="Agent 'missing-agent' is not registered.",
+    ):
+        registry.get("missing-agent")
+
+
+def test_agent_registry_unregisters_agent() -> None:
+    """Registry should remove and return a registered agent."""
+    registry = AgentRegistry()
+    agent = TestAgent(name="diagnostic-agent")
+    registry.register(agent)
+
+    removed_agent = registry.unregister("diagnostic-agent")
+
+    assert removed_agent is agent
+    assert not registry.contains("diagnostic-agent")
+    assert len(registry) == 0
+
+
+def test_agent_registry_unregister_rejects_unknown_agent() -> None:
+    """Registry should reject removal of an unknown agent."""
+    registry = AgentRegistry()
+
+    with pytest.raises(
+        KeyError,
+        match="Agent 'missing-agent' is not registered.",
+    ):
+        registry.unregister("missing-agent")
+
+
+def test_agent_registry_lists_registered_names() -> None:
+    """Registry should list names in registration order."""
+    registry = AgentRegistry()
+    registry.register(TestAgent(name="planning-agent"))
+    registry.register(TestAgent(name="retrieval-agent"))
+
+    assert registry.list_names() == [
+        "planning-agent",
+        "retrieval-agent",
+    ]
+
+
+def test_agent_registry_iterates_over_agents() -> None:
+    """Registry should iterate over registered agent instances."""
+    registry = AgentRegistry()
+    planning_agent = TestAgent(name="planning-agent")
+    retrieval_agent = TestAgent(name="retrieval-agent")
+
+    registry.register(planning_agent)
+    registry.register(retrieval_agent)
+
+    assert list(registry) == [
+        planning_agent,
+        retrieval_agent,
+    ]
+
+
+def test_agent_registry_clears_agents() -> None:
+    """Registry should remove every registered agent."""
+    registry = AgentRegistry()
+    registry.register(TestAgent(name="planning-agent"))
+    registry.register(TestAgent(name="retrieval-agent"))
+
+    registry.clear()
+
+    assert len(registry) == 0
+    assert registry.list_names() == []
+
+
+@pytest.mark.parametrize(
+    ("operation", "agent_name"),
+    [
+        ("get", ""),
+        ("get", "   "),
+        ("unregister", ""),
+        ("unregister", "   "),
+    ],
+)
+def test_agent_registry_rejects_empty_names(
+    operation: str,
+    agent_name: str,
+) -> None:
+    """Registry operations should reject empty agent names."""
+    registry = AgentRegistry()
+
+    method = getattr(registry, operation)
+
+    with pytest.raises(
+        ValueError,
+        match="Agent name must not be empty.",
+    ):
+        method(agent_name)
+
+## Step 16.3 — Export AgentRegistry
+
+## code src\full_stack_ai_shared\agents\__init__.py
+
+"""Shared AI-agent abstractions."""
+
+from full_stack_ai_shared.agents.base import (
+    AgentRequest,
+    AgentResult,
+    BaseAgent,
+)
+from full_stack_ai_shared.agents.context import AgentExecutionContext
+from full_stack_ai_shared.agents.memory import (
+    AgentMemory,
+    MemoryEntry,
+)
+from full_stack_ai_shared.agents.registry import AgentRegistry
+from full_stack_ai_shared.agents.state import (
+    AgentState,
+    AgentStatus,
+)
+
+__all__ = [
+    "AgentExecutionContext",
+    "AgentMemory",
+    "AgentRegistry",
+    "AgentRequest",
+    "AgentResult",
+    "AgentState",
+    "AgentStatus",
+    "BaseAgent",
+    "MemoryEntry",
+]
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\agents\registry.py `
+    src\full_stack_ai_shared\agents\__init__.py `
+    tests\test_agent_registry.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\agents\registry.py `
+    src\full_stack_ai_shared\agents\__init__.py `
+    tests\test_agent_registry.py
+
+uv run mypy src
+
+## code tests\test_agent_registry.py
+
+"""Tests for the shared AI-agent registry."""
+
+from collections.abc import Callable
+from typing import Any
+
+import pytest
+
+from full_stack_ai_shared.agents import (
+    AgentRegistry,
+    AgentRequest,
+    AgentResult,
+    BaseAgent,
+)
+
+
+class StubAgent(BaseAgent):
+    """Simple agent implementation used for registry tests."""
+
+    async def run(self, request: AgentRequest) -> AgentResult:
+        """Return the submitted task as a successful result."""
+        return AgentResult(
+            agent_name=self.name,
+            success=True,
+            output=request.task,
+        )
+
+
+def test_agent_registry_starts_empty() -> None:
+    """Registry should contain no agents after initialization."""
+    registry = AgentRegistry()
+
+    assert len(registry) == 0
+    assert registry.list_names() == []
+
+
+def test_agent_registry_registers_agent() -> None:
+    """Registry should store an agent by name."""
+    registry = AgentRegistry()
+    agent = StubAgent(name="diagnostic-agent")
+
+    registry.register(agent)
+
+    assert len(registry) == 1
+    assert registry.contains("diagnostic-agent")
+    assert registry.get("diagnostic-agent") is agent
+
+
+def test_agent_registry_rejects_duplicate_agent_name() -> None:
+    """Registry should reject agents with duplicate names."""
+    registry = AgentRegistry()
+    first_agent = StubAgent(name="diagnostic-agent")
+    second_agent = StubAgent(name="diagnostic-agent")
+
+    registry.register(first_agent)
+
+    with pytest.raises(
+        ValueError,
+        match="Agent 'diagnostic-agent' is already registered.",
+    ):
+        registry.register(second_agent)
+
+
+def test_agent_registry_get_rejects_unknown_agent() -> None:
+    """Registry should reject requests for unknown agents."""
+    registry = AgentRegistry()
+
+    with pytest.raises(
+        KeyError,
+        match="Agent 'missing-agent' is not registered.",
+    ):
+        registry.get("missing-agent")
+
+
+def test_agent_registry_unregisters_agent() -> None:
+    """Registry should remove and return a registered agent."""
+    registry = AgentRegistry()
+    agent = StubAgent(name="diagnostic-agent")
+    registry.register(agent)
+
+    removed_agent = registry.unregister("diagnostic-agent")
+
+    assert removed_agent is agent
+    assert not registry.contains("diagnostic-agent")
+    assert len(registry) == 0
+
+
+def test_agent_registry_unregister_rejects_unknown_agent() -> None:
+    """Registry should reject removal of an unknown agent."""
+    registry = AgentRegistry()
+
+    with pytest.raises(
+        KeyError,
+        match="Agent 'missing-agent' is not registered.",
+    ):
+        registry.unregister("missing-agent")
+
+
+def test_agent_registry_lists_registered_names() -> None:
+    """Registry should list names in registration order."""
+    registry = AgentRegistry()
+    registry.register(StubAgent(name="planning-agent"))
+    registry.register(StubAgent(name="retrieval-agent"))
+
+    assert registry.list_names() == [
+        "planning-agent",
+        "retrieval-agent",
+    ]
+
+
+def test_agent_registry_iterates_over_agents() -> None:
+    """Registry should iterate over registered agent instances."""
+    registry = AgentRegistry()
+    planning_agent = StubAgent(name="planning-agent")
+    retrieval_agent = StubAgent(name="retrieval-agent")
+
+    registry.register(planning_agent)
+    registry.register(retrieval_agent)
+
+    assert list(registry) == [
+        planning_agent,
+        retrieval_agent,
+    ]
+
+
+def test_agent_registry_clears_agents() -> None:
+    """Registry should remove every registered agent."""
+    registry = AgentRegistry()
+    registry.register(StubAgent(name="planning-agent"))
+    registry.register(StubAgent(name="retrieval-agent"))
+
+    registry.clear()
+
+    assert len(registry) == 0
+    assert registry.list_names() == []
+
+
+@pytest.mark.parametrize(
+    ("operation", "agent_name"),
+    [
+        ("get", ""),
+        ("get", "   "),
+        ("unregister", ""),
+        ("unregister", "   "),
+    ],
+)
+def test_agent_registry_rejects_empty_names(
+    operation: str,
+    agent_name: str,
+) -> None:
+    """Registry operations should reject empty agent names."""
+    registry = AgentRegistry()
+
+    method: Callable[[str], Any] = getattr(registry, operation)
+
+    with pytest.raises(
+        ValueError,
+        match="Agent name must not be empty.",
+    ):
+        method(agent_name)
+
+## Run
+
+uv run ruff format tests\test_agent_registry.py
+
+uv run ruff check tests\test_agent_registry.py
+
+uv run mypy src
+
+uv run pytest tests\test_agent_registry.py -v
+
+## Step 16.5 — Build the Agent Exception Hierarchy
+
+## code src\full_stack_ai_shared\agents\exceptions.py
+
+"""Exceptions raised by shared AI-agent orchestration components."""
+
+
+class AgentError(Exception):
+    """Base exception for all shared AI-agent errors."""
+
+
+class AgentRegistrationError(AgentError):
+    """Raised when an agent cannot be registered."""
+
+
+class AgentNotFoundError(AgentError):
+    """Raised when a requested agent is not registered."""
+
+
+class AgentExecutionError(AgentError):
+    """Raised when an agent fails during execution."""
+
+
+class AgentOrchestrationError(AgentError):
+    """Raised when an orchestration workflow cannot be completed."""
+
+## Step 16.6 — code tests\test_agent_exceptions.py
+
+"""Tests for shared AI-agent exceptions."""
+
+import pytest
+
+from full_stack_ai_shared.agents import (
+    AgentError,
+    AgentExecutionError,
+    AgentNotFoundError,
+    AgentOrchestrationError,
+    AgentRegistrationError,
+)
+
+
+@pytest.mark.parametrize(
+    "exception_type",
+    [
+        AgentRegistrationError,
+        AgentNotFoundError,
+        AgentExecutionError,
+        AgentOrchestrationError,
+    ],
+)
+def test_agent_exceptions_inherit_from_agent_error(
+    exception_type: type[AgentError],
+) -> None:
+    """Specialized agent exceptions should inherit from AgentError."""
+    error = exception_type("Agent operation failed.")
+
+    assert isinstance(error, AgentError)
+    assert isinstance(error, Exception)
+
+
+@pytest.mark.parametrize(
+    ("exception_type", "message"),
+    [
+        (
+            AgentError,
+            "Generic agent failure.",
+        ),
+        (
+            AgentRegistrationError,
+            "Agent registration failed.",
+        ),
+        (
+            AgentNotFoundError,
+            "Requested agent was not found.",
+        ),
+        (
+            AgentExecutionError,
+            "Agent execution failed.",
+        ),
+        (
+            AgentOrchestrationError,
+            "Agent orchestration failed.",
+        ),
+    ],
+)
+def test_agent_exceptions_preserve_messages(
+    exception_type: type[AgentError],
+    message: str,
+) -> None:
+    """Agent exceptions should preserve their supplied messages."""
+    error = exception_type(message)
+
+    assert str(error) == message
+
+
+def test_agent_error_can_be_raised_and_caught() -> None:
+    """AgentError should behave like a normal exception."""
+    with pytest.raises(
+        AgentError,
+        match="Shared agent failure.",
+    ):
+        raise AgentError("Shared agent failure.")
+
+
+def test_specialized_exception_can_be_caught_as_agent_error() -> None:
+    """Specialized exceptions should be catchable as AgentError."""
+    with pytest.raises(
+        AgentError,
+        match="Agent could not be executed.",
+    ):
+        raise AgentExecutionError("Agent could not be executed.")
+
+## Step 16.7 — Export the Exceptions        code src\full_stack_ai_shared\agents\__init__.py
+
+"""Shared AI-agent abstractions."""
+
+from full_stack_ai_shared.agents.base import (
+    AgentRequest,
+    AgentResult,
+    BaseAgent,
+)
+from full_stack_ai_shared.agents.context import AgentExecutionContext
+from full_stack_ai_shared.agents.exceptions import (
+    AgentError,
+    AgentExecutionError,
+    AgentNotFoundError,
+    AgentOrchestrationError,
+    AgentRegistrationError,
+)
+from full_stack_ai_shared.agents.memory import (
+    AgentMemory,
+    MemoryEntry,
+)
+from full_stack_ai_shared.agents.registry import AgentRegistry
+from full_stack_ai_shared.agents.state import (
+    AgentState,
+    AgentStatus,
+)
+
+__all__ = [
+    "AgentError",
+    "AgentExecutionContext",
+    "AgentExecutionError",
+    "AgentMemory",
+    "AgentNotFoundError",
+    "AgentOrchestrationError",
+    "AgentRegistry",
+    "AgentRegistrationError",
+    "AgentRequest",
+    "AgentResult",
+    "AgentState",
+    "AgentStatus",
+    "BaseAgent",
+    "MemoryEntry",
+]
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\agents\exceptions.py `
+    src\full_stack_ai_shared\agents\__init__.py `
+    tests\test_agent_exceptions.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\agents\exceptions.py `
+    src\full_stack_ai_shared\agents\__init__.py `
+    tests\test_agent_exceptions.py
+
+uv run mypy src
+
+uv run pytest tests\test_agent_exceptions.py -v
+
+## Step 16.9 — Build Shared Agent Orchestrator  code src\full_stack_ai_shared\agents\orchestrator.py
+
+
+"""Orchestration service for executing registered AI agents."""
+
+from full_stack_ai_shared.agents.base import AgentRequest, AgentResult
+from full_stack_ai_shared.agents.context import AgentExecutionContext
+from full_stack_ai_shared.agents.exceptions import (
+    AgentExecutionError,
+    AgentNotFoundError,
+)
+from full_stack_ai_shared.agents.registry import AgentRegistry
+
+
+class AgentOrchestrator:
+    """Coordinate execution of registered AI agents."""
+
+    def __init__(
+        self,
+        registry: AgentRegistry | None = None,
+        context: AgentExecutionContext | None = None,
+    ) -> None:
+        """Initialize the orchestrator with shared agent services."""
+        self.registry = registry or AgentRegistry()
+        self.context = context or AgentExecutionContext()
+
+    async def execute(
+        self,
+        agent_name: str,
+        request: AgentRequest,
+    ) -> AgentResult:
+        """Execute a registered agent using the supplied request."""
+        normalized_name = agent_name.strip()
+
+        if not normalized_name:
+            raise ValueError("Agent name must not be empty.")
+
+        try:
+            agent = self.registry.get(normalized_name)
+        except KeyError as error:
+            raise AgentNotFoundError(
+                f"Agent '{normalized_name}' is not registered."
+            ) from error
+
+        try:
+            result = await agent.run(request)
+        except Exception as error:
+            raise AgentExecutionError(
+                f"Agent '{normalized_name}' execution failed."
+            ) from error
+
+        if result.agent_name != normalized_name:
+            raise AgentExecutionError(
+                "Agent result name does not match the executed agent: "
+                f"expected '{normalized_name}', received "
+                f"'{result.agent_name}'."
+            )
+
+        return result
+
+    async def execute_task(
+        self,
+        agent_name: str,
+        task: str,
+        context: dict[str, object] | None = None,
+    ) -> AgentResult:
+        """Create an agent request and execute the selected agent."""
+        if not task.strip():
+            raise ValueError("Agent task must not be empty.")
+
+        request = AgentRequest(
+            task=task,
+            context=context or {},
+        )
+
+        return await self.execute(agent_name, request)
+
+## Step 16.10 — code tests\test_orchestrator.py
+
+"""Tests for the shared AI-agent orchestrator."""
+
+import pytest
+
+from full_stack_ai_shared.agents import (
+    AgentExecutionContext,
+    AgentExecutionError,
+    AgentNotFoundError,
+    AgentOrchestrator,
+    AgentRegistry,
+    AgentRequest,
+    AgentResult,
+    BaseAgent,
+)
+
+
+class EchoAgent(BaseAgent):
+    """Agent that returns the submitted task."""
+
+    async def run(self, request: AgentRequest) -> AgentResult:
+        """Return a successful result containing the request task."""
+        return AgentResult(
+            agent_name=self.name,
+            success=True,
+            output=f"Processed: {request.task}",
+            metadata={
+                "context": request.context,
+            },
+        )
+
+
+class FailingAgent(BaseAgent):
+    """Agent that raises an exception during execution."""
+
+    async def run(self, request: AgentRequest) -> AgentResult:
+        """Raise an execution failure."""
+        raise RuntimeError(f"Unable to process: {request.task}")
+
+
+class InvalidResultAgent(BaseAgent):
+    """Agent that returns a result with an incorrect agent name."""
+
+    async def run(self, request: AgentRequest) -> AgentResult:
+        """Return a result associated with another agent."""
+        return AgentResult(
+            agent_name="different-agent",
+            success=True,
+            output=request.task,
+        )
+
+
+def test_agent_orchestrator_creates_default_dependencies() -> None:
+    """Orchestrator should create default shared dependencies."""
+    orchestrator = AgentOrchestrator()
+
+    assert isinstance(orchestrator.registry, AgentRegistry)
+    assert isinstance(orchestrator.context, AgentExecutionContext)
+    assert len(orchestrator.registry) == 0
+
+
+def test_agent_orchestrator_uses_supplied_dependencies() -> None:
+    """Orchestrator should preserve explicitly supplied dependencies."""
+    registry = AgentRegistry()
+    context = AgentExecutionContext()
+
+    orchestrator = AgentOrchestrator(
+        registry=registry,
+        context=context,
+    )
+
+    assert orchestrator.registry is registry
+    assert orchestrator.context is context
+
+
+@pytest.mark.asyncio
+async def test_agent_orchestrator_executes_registered_agent() -> None:
+    """Orchestrator should execute a registered agent."""
+    registry = AgentRegistry()
+    registry.register(EchoAgent(name="echo-agent"))
+    orchestrator = AgentOrchestrator(registry=registry)
+    request = AgentRequest(task="Analyze equipment health")
+
+    result = await orchestrator.execute(
+        agent_name="echo-agent",
+        request=request,
+    )
+
+    assert result.agent_name == "echo-agent"
+    assert result.success is True
+    assert result.output == "Processed: Analyze equipment health"
+
+
+@pytest.mark.asyncio
+async def test_agent_orchestrator_passes_request_context() -> None:
+    """Orchestrator should pass request context to the selected agent."""
+    registry = AgentRegistry()
+    registry.register(EchoAgent(name="echo-agent"))
+    orchestrator = AgentOrchestrator(registry=registry)
+    request = AgentRequest(
+        task="Review maintenance history",
+        context={
+            "asset_id": "pump-101",
+            "priority": "high",
+        },
+    )
+
+    result = await orchestrator.execute(
+        agent_name="echo-agent",
+        request=request,
+    )
+
+    assert result.metadata["context"] == {
+        "asset_id": "pump-101",
+        "priority": "high",
+    }
+
+
+@pytest.mark.asyncio
+async def test_agent_orchestrator_rejects_unknown_agent() -> None:
+    """Orchestrator should raise an error for an unknown agent."""
+    orchestrator = AgentOrchestrator()
+
+    with pytest.raises(
+        AgentNotFoundError,
+        match="Agent 'missing-agent' is not registered.",
+    ):
+        await orchestrator.execute(
+            agent_name="missing-agent",
+            request=AgentRequest(task="Analyze asset"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_agent_orchestrator_rejects_empty_agent_name() -> None:
+    """Orchestrator should reject an empty agent name."""
+    orchestrator = AgentOrchestrator()
+
+    with pytest.raises(
+        ValueError,
+        match="Agent name must not be empty.",
+    ):
+        await orchestrator.execute(
+            agent_name="   ",
+            request=AgentRequest(task="Analyze asset"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_agent_orchestrator_wraps_agent_failure() -> None:
+    """Orchestrator should wrap exceptions raised by agents."""
+    registry = AgentRegistry()
+    registry.register(FailingAgent(name="failing-agent"))
+    orchestrator = AgentOrchestrator(registry=registry)
+
+    with pytest.raises(
+        AgentExecutionError,
+        match="Agent 'failing-agent' execution failed.",
+    ) as exception_info:
+        await orchestrator.execute(
+            agent_name="failing-agent",
+            request=AgentRequest(task="Analyze asset"),
+        )
+
+    assert isinstance(exception_info.value.__cause__, RuntimeError)
+
+
+@pytest.mark.asyncio
+async def test_agent_orchestrator_rejects_mismatched_result_name() -> None:
+    """Orchestrator should reject results associated with another agent."""
+    registry = AgentRegistry()
+    registry.register(InvalidResultAgent(name="invalid-result-agent"))
+    orchestrator = AgentOrchestrator(registry=registry)
+
+    with pytest.raises(
+        AgentExecutionError,
+        match=(
+            "Agent result name does not match the executed agent: "
+            "expected 'invalid-result-agent', received "
+            "'different-agent'."
+        ),
+    ):
+        await orchestrator.execute(
+            agent_name="invalid-result-agent",
+            request=AgentRequest(task="Analyze asset"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_agent_orchestrator_executes_task() -> None:
+    """Orchestrator should create a request from a task."""
+    registry = AgentRegistry()
+    registry.register(EchoAgent(name="echo-agent"))
+    orchestrator = AgentOrchestrator(registry=registry)
+
+    result = await orchestrator.execute_task(
+        agent_name="echo-agent",
+        task="Generate maintenance recommendation",
+        context={
+            "asset_id": "compressor-202",
+        },
+    )
+
+    assert result.output == "Processed: Generate maintenance recommendation"
+    assert result.metadata["context"] == {
+        "asset_id": "compressor-202",
+    }
+
+
+@pytest.mark.asyncio
+async def test_agent_orchestrator_execute_task_uses_empty_context() -> None:
+    """Task execution should use an empty context by default."""
+    registry = AgentRegistry()
+    registry.register(EchoAgent(name="echo-agent"))
+    orchestrator = AgentOrchestrator(registry=registry)
+
+    result = await orchestrator.execute_task(
+        agent_name="echo-agent",
+        task="Inspect asset",
+    )
+
+    assert result.metadata["context"] == {}
+
+
+@pytest.mark.asyncio
+async def test_agent_orchestrator_rejects_empty_task() -> None:
+    """Task execution should reject empty task descriptions."""
+    registry = AgentRegistry()
+    registry.register(EchoAgent(name="echo-agent"))
+    orchestrator = AgentOrchestrator(registry=registry)
+
+    with pytest.raises(
+        ValueError,
+        match="Agent task must not be empty.",
+    ):
+        await orchestrator.execute_task(
+            agent_name="echo-agent",
+            task="   ",
+        )
+## Step 16.11 — Export AgentOrchestrator        ## code src\full_stack_ai_shared\agents\__init__.py
+
+"""Shared AI-agent abstractions."""
+
+from full_stack_ai_shared.agents.base import (
+    AgentRequest,
+    AgentResult,
+    BaseAgent,
+)
+from full_stack_ai_shared.agents.context import AgentExecutionContext
+from full_stack_ai_shared.agents.exceptions import (
+    AgentError,
+    AgentExecutionError,
+    AgentNotFoundError,
+    AgentOrchestrationError,
+    AgentRegistrationError,
+)
+from full_stack_ai_shared.agents.memory import (
+    AgentMemory,
+    MemoryEntry,
+)
+from full_stack_ai_shared.agents.orchestrator import AgentOrchestrator
+from full_stack_ai_shared.agents.registry import AgentRegistry
+from full_stack_ai_shared.agents.state import (
+    AgentState,
+    AgentStatus,
+)
+
+__all__ = [
+    "AgentError",
+    "AgentExecutionContext",
+    "AgentExecutionError",
+    "AgentMemory",
+    "AgentNotFoundError",
+    "AgentOrchestrationError",
+    "AgentOrchestrator",
+    "AgentRegistry",
+    "AgentRegistrationError",
+    "AgentRequest",
+    "AgentResult",
+    "AgentState",
+    "AgentStatus",
+    "BaseAgent",
+    "MemoryEntry",
+]
+
+## Run
+
+uv run ruff format src\full_stack_ai_shared\agents\orchestrator.py
+
+uv run ruff check src\full_stack_ai_shared\agents\orchestrator.py
+
+uv run mypy src
+
+uv run pytest tests\test_orchestrator.py -v
+
+uv run pytest `
+    tests\test_agents.py `
+    tests\test_agent_registry.py `
+    tests\test_agent_exceptions.py `
+    tests\test_orchestrator.py `
+    -v
+
+
+## Step 17 — Shared AI Tool Execution Framework
+
+## Build a reusable tool framework that every future AI platform in your portfolio can use.
+
+## Step 17.1 — Run Files
+
+New-Item -ItemType File -Force `
+src\full_stack_ai_shared\tools\context.py | Out-Null
+
+New-Item -ItemType File -Force `
+src\full_stack_ai_shared\tools\executor.py | Out-Null
+
+New-Item -ItemType File -Force `
+src\full_stack_ai_shared\tools\exceptions.py | Out-Null
+
+New-Item -ItemType File -Force `
+src\full_stack_ai_shared\tools\decorators.py | Out-Null
+
+New-Item -ItemType File -Force `
+tests\test_tool_context.py | Out-Null
+
+New-Item -ItemType File -Force `
+tests\test_tool_executor.py | Out-Null
+
+New-Item -ItemType File -Force `
+tests\test_tool_exceptions.py | Out-Null
+
+New-Item -ItemType File -Force `
+tests\test_tool_decorators.py | Out-Null
+
+## Verify
+Get-ChildItem src\full_stack_ai_shared\tools
+
+Get-ChildItem tests\test_tool*.py
+
+## tep 17.2 — Build Tool Exceptions
+
+## code src\full_stack_ai_shared\tools\exceptions.py
+
+"""Exceptions raised by shared AI-tool components."""
+
+
+class ToolError(Exception):
+    """Base exception for all shared AI-tool errors."""
+
+
+class ToolRegistrationError(ToolError):
+    """Raised when a tool cannot be registered."""
+
+
+class ToolAlreadyRegisteredError(ToolRegistrationError):
+    """Raised when a tool name has already been registered."""
+
+
+class ToolNotFoundError(ToolError):
+    """Raised when a requested tool is not registered."""
+
+
+class ToolValidationError(ToolError):
+    """Raised when tool input validation fails."""
+
+
+class ToolExecutionError(ToolError):
+    """Raised when a tool fails during execution."""
+
+## code src\full_stack_ai_shared\tools\context.py
+
+"""Execution context for shared AI-tool invocations."""
+
+from dataclasses import dataclass, field
+from typing import Any
+from uuid import uuid4
+
+
+@dataclass(slots=True)
+class ToolContext:
+    """Provide metadata and identity details during tool execution."""
+
+    execution_id: str = field(default_factory=lambda: str(uuid4()))
+    agent_name: str | None = None
+    user_id: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate context values after initialization."""
+        if not self.execution_id.strip():
+            raise ValueError("Tool execution ID must not be empty.")
+
+        if self.agent_name is not None:
+            normalized_agent_name = self.agent_name.strip()
+
+            if not normalized_agent_name:
+                raise ValueError("Agent name must not be empty.")
+
+            self.agent_name = normalized_agent_name
+
+        if self.user_id is not None:
+            normalized_user_id = self.user_id.strip()
+
+            if not normalized_user_id:
+                raise ValueError("User ID must not be empty.")
+
+            self.user_id = normalized_user_id
+
+    def get_metadata(
+        self,
+        key: str,
+        default: Any = None,
+    ) -> Any:
+        """Return a metadata value or the supplied default."""
+        normalized_key = key.strip()
+
+        if not normalized_key:
+            raise ValueError("Metadata key must not be empty.")
+
+        return self.metadata.get(normalized_key, default)
+
+    def set_metadata(
+        self,
+        key: str,
+        value: Any,
+    ) -> None:
+        """Store a metadata value in the context."""
+        normalized_key = key.strip()
+
+        if not normalized_key:
+            raise ValueError("Metadata key must not be empty.")
+
+        self.metadata[normalized_key] = value
+
+## code tests\test_tool_exceptions.py
+
+
+"""Tests for shared AI-tool exceptions."""
+
+import pytest
+
+from full_stack_ai_shared.tools.exceptions import (
+    ToolAlreadyRegisteredError,
+    ToolError,
+    ToolExecutionError,
+    ToolNotFoundError,
+    ToolRegistrationError,
+    ToolValidationError,
+)
+
+
+@pytest.mark.parametrize(
+    "exception_type",
+    [
+        ToolRegistrationError,
+        ToolAlreadyRegisteredError,
+        ToolNotFoundError,
+        ToolValidationError,
+        ToolExecutionError,
+    ],
+)
+def test_tool_exceptions_inherit_from_tool_error(
+    exception_type: type[ToolError],
+) -> None:
+    """Specialized tool exceptions should inherit from ToolError."""
+    error = exception_type("Tool operation failed.")
+
+    assert isinstance(error, ToolError)
+    assert isinstance(error, Exception)
+
+
+@pytest.mark.parametrize(
+    ("exception_type", "message"),
+    [
+        (
+            ToolError,
+            "Generic tool failure.",
+        ),
+        (
+            ToolRegistrationError,
+            "Tool registration failed.",
+        ),
+        (
+            ToolAlreadyRegisteredError,
+            "Tool is already registered.",
+        ),
+        (
+            ToolNotFoundError,
+            "Requested tool was not found.",
+        ),
+        (
+            ToolValidationError,
+            "Tool input validation failed.",
+        ),
+        (
+            ToolExecutionError,
+            "Tool execution failed.",
+        ),
+    ],
+)
+def test_tool_exceptions_preserve_messages(
+    exception_type: type[ToolError],
+    message: str,
+) -> None:
+    """Tool exceptions should preserve supplied messages."""
+    error = exception_type(message)
+
+    assert str(error) == message
+
+
+def test_tool_error_can_be_raised_and_caught() -> None:
+    """ToolError should behave like a normal exception."""
+    with pytest.raises(
+        ToolError,
+        match="Shared tool failure.",
+    ):
+        raise ToolError("Shared tool failure.")
+
+
+def test_specialized_exception_can_be_caught_as_tool_error() -> None:
+    """Specialized exceptions should be catchable as ToolError."""
+    with pytest.raises(
+        ToolError,
+        match="Tool could not be executed.",
+    ):
+        raise ToolExecutionError("Tool could not be executed.")
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\tools\exceptions.py `
+    tests\test_tool_exceptions.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\tools\exceptions.py `
+    tests\test_tool_exceptions.py
+
+uv run mypy src
+
+uv run pytest tests\test_tool_exceptions.py -v
+
+## Step 17.3 — Add Tool Context Tests
+
+## code tests\test_tool_context.py
+
+"""Tests for the shared AI-tool execution context."""
+
+import pytest
+
+from full_stack_ai_shared.tools import ToolContext
+
+
+def test_tool_context_defaults() -> None:
+    """ToolContext should provide generated defaults."""
+    context = ToolContext()
+
+    assert context.execution_id
+    assert context.agent_name is None
+    assert context.user_id is None
+    assert context.metadata == {}
+
+
+def test_tool_context_generates_unique_execution_ids() -> None:
+    """ToolContext instances should receive unique execution IDs."""
+    first_context = ToolContext()
+    second_context = ToolContext()
+
+    assert first_context.execution_id != second_context.execution_id
+
+
+def test_tool_context_accepts_identity_values() -> None:
+    """ToolContext should preserve supplied identity values."""
+    context = ToolContext(
+        agent_name="diagnostic-agent",
+        user_id="user-101",
+    )
+
+    assert context.agent_name == "diagnostic-agent"
+    assert context.user_id == "user-101"
+
+
+def test_tool_context_normalizes_identity_values() -> None:
+    """ToolContext should remove surrounding whitespace."""
+    context = ToolContext(
+        execution_id="  execution-101  ",
+        agent_name="  diagnostic-agent  ",
+        user_id="  user-101  ",
+    )
+
+    assert context.execution_id == "execution-101"
+    assert context.agent_name == "diagnostic-agent"
+    assert context.user_id == "user-101"
+
+
+def test_tool_context_accepts_initial_metadata() -> None:
+    """ToolContext should preserve supplied metadata."""
+    context = ToolContext(
+        metadata={
+            "asset_id": "pump-101",
+            "priority": "high",
+        }
+    )
+
+    assert context.metadata == {
+        "asset_id": "pump-101",
+        "priority": "high",
+    }
+
+
+def test_tool_context_sets_metadata() -> None:
+    """ToolContext should store metadata values."""
+    context = ToolContext()
+
+    context.set_metadata("asset_id", "compressor-202")
+
+    assert context.metadata["asset_id"] == "compressor-202"
+
+
+def test_tool_context_normalizes_metadata_keys() -> None:
+    """Metadata operations should normalize key whitespace."""
+    context = ToolContext()
+
+    context.set_metadata("  asset_id  ", "pump-101")
+
+    assert context.metadata == {
+        "asset_id": "pump-101",
+    }
+    assert context.get_metadata("  asset_id  ") == "pump-101"
+
+
+def test_tool_context_gets_existing_metadata() -> None:
+    """ToolContext should return existing metadata values."""
+    context = ToolContext(
+        metadata={
+            "asset_id": "pump-101",
+        }
+    )
+
+    assert context.get_metadata("asset_id") == "pump-101"
+
+
+def test_tool_context_gets_default_for_missing_metadata() -> None:
+    """ToolContext should return a default for missing metadata."""
+    context = ToolContext()
+
+    result = context.get_metadata(
+        "priority",
+        "normal",
+    )
+
+    assert result == "normal"
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value", "message"),
+    [
+        (
+            "execution_id",
+            "",
+            "Tool execution ID must not be empty.",
+        ),
+        (
+            "execution_id",
+            "   ",
+            "Tool execution ID must not be empty.",
+        ),
+        (
+            "agent_name",
+            "",
+            "Agent name must not be empty.",
+        ),
+        (
+            "agent_name",
+            "   ",
+            "Agent name must not be empty.",
+        ),
+        (
+            "user_id",
+            "",
+            "User ID must not be empty.",
+        ),
+        (
+            "user_id",
+            "   ",
+            "User ID must not be empty.",
+        ),
+    ],
+)
+def test_tool_context_rejects_empty_identity_values(
+    field_name: str,
+    field_value: str,
+    message: str,
+) -> None:
+    """ToolContext should reject empty identity fields."""
+    values = {
+        field_name: field_value,
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=message,
+    ):
+        ToolContext(**values)
+
+
+@pytest.mark.parametrize(
+    "metadata_key",
+    [
+        "",
+        "   ",
+    ],
+)
+def test_tool_context_set_metadata_rejects_empty_key(
+    metadata_key: str,
+) -> None:
+    """set_metadata should reject empty keys."""
+    context = ToolContext()
+
+    with pytest.raises(
+        ValueError,
+        match="Metadata key must not be empty.",
+    ):
+        context.set_metadata(
+            metadata_key,
+            "value",
+        )
+
+
+@pytest.mark.parametrize(
+    "metadata_key",
+    [
+        "",
+        "   ",
+    ],
+)
+def test_tool_context_get_metadata_rejects_empty_key(
+    metadata_key: str,
+) -> None:
+    """get_metadata should reject empty keys."""
+    context = ToolContext()
+
+    with pytest.raises(
+        ValueError,
+        match="Metadata key must not be empty.",
+    ):
+        context.get_metadata(metadata_key)
+
+## code src\full_stack_ai_shared\tools\context.py
+
+"""Execution context for shared AI-tool invocations."""
+
+from dataclasses import dataclass, field
+from typing import Any
+from uuid import uuid4
+
+
+@dataclass(slots=True)
+class ToolContext:
+    """Provide metadata and identity details during tool execution."""
+
+    execution_id: str = field(default_factory=lambda: str(uuid4()))
+    agent_name: str | None = None
+    user_id: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate and normalize context values."""
+        normalized_execution_id = self.execution_id.strip()
+
+        if not normalized_execution_id:
+            raise ValueError("Tool execution ID must not be empty.")
+
+        self.execution_id = normalized_execution_id
+
+        if self.agent_name is not None:
+            normalized_agent_name = self.agent_name.strip()
+
+            if not normalized_agent_name:
+                raise ValueError("Agent name must not be empty.")
+
+            self.agent_name = normalized_agent_name
+
+        if self.user_id is not None:
+            normalized_user_id = self.user_id.strip()
+
+            if not normalized_user_id:
+                raise ValueError("User ID must not be empty.")
+
+            self.user_id = normalized_user_id
+
+    def get_metadata(
+        self,
+        key: str,
+        default: Any = None,
+    ) -> Any:
+        """Return a metadata value or the supplied default."""
+        normalized_key = key.strip()
+
+        if not normalized_key:
+            raise ValueError("Metadata key must not be empty.")
+
+        return self.metadata.get(normalized_key, default)
+
+    def set_metadata(
+        self,
+        key: str,
+        value: Any,
+    ) -> None:
+        """Store a metadata value in the context."""
+        normalized_key = key.strip()
+
+        if not normalized_key:
+            raise ValueError("Metadata key must not be empty.")
+
+        self.metadata[normalized_key] = value
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\tools\context.py `
+    tests\test_tool_context.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\tools\context.py `
+    tests\test_tool_context.py
+
+uv run mypy src
+
+uv run pytest tests\test_tool_context.py -v
+
+## Add - code src\full_stack_ai_shared\tools\executor.py
+
+"""Execution service for registered shared AI tools."""
+
+from full_stack_ai_shared.tools.context import ToolContext
+from full_stack_ai_shared.tools.exceptions import ToolNotFoundError
+from full_stack_ai_shared.tools.models import ToolRequest, ToolResult
+from full_stack_ai_shared.tools.registry import ToolRegistry
+
+
+class ToolExecutor:
+    """Execute tool requests through a shared tool registry."""
+
+    def __init__(self, registry: ToolRegistry) -> None:
+        """Initialize the executor with a tool registry."""
+        self._registry = registry
+
+    @property
+    def registry(self) -> ToolRegistry:
+        """Return the tool registry used by the executor."""
+        return self._registry
+
+    async def execute(
+        self,
+        request: ToolRequest,
+        context: ToolContext | None = None,
+    ) -> ToolResult:
+        """Execute a tool request and return a normalized result."""
+        execution_context = context or ToolContext(
+            request_id=request.request_id,
+        )
+
+        try:
+            result = await self._registry.execute_request(
+                request=request,
+                context=execution_context,
+            )
+        except ToolNotFoundError as error:
+            return ToolResult(
+                tool_name=request.tool_name,
+                success=False,
+                error=str(error),
+                request_id=request.request_id,
+            )
+        except Exception as error:
+            return ToolResult(
+                tool_name=request.tool_name,
+                success=False,
+                error=f"Tool execution failed: {error}",
+                request_id=request.request_id,
+            )
+
+        result.request_id = request.request_id
+        return result
+
+## code tests\test_tool_executor.py
+
+"""Tests for the shared AI tool executor."""
+
+from typing import Any
+
+import pytest
+
+from full_stack_ai_shared.tools import (
+    BaseTool,
+    ToolContext,
+    ToolExecutor,
+    ToolRegistry,
+    ToolRequest,
+    ToolResult,
+)
+
+
+class EchoTool(BaseTool):
+    """Return the submitted message."""
+
+    def __init__(self) -> None:
+        """Initialize the echo tool."""
+        super().__init__(
+            name="echo",
+            description="Return a submitted message.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string"},
+                },
+                "required": ["message"],
+            },
+        )
+
+    async def execute(
+        self,
+        arguments: dict[str, Any],
+        context: ToolContext | None = None,
+    ) -> ToolResult:
+        """Return the message supplied in the arguments."""
+        return ToolResult(
+            tool_name=self.name,
+            success=True,
+            output=arguments["message"],
+            metadata={
+                "request_id": context.request_id if context else None,
+            },
+        )
+
+
+class FailingTool(BaseTool):
+    """Raise an exception during execution."""
+
+    def __init__(self) -> None:
+        """Initialize the failing tool."""
+        super().__init__(
+            name="failing-tool",
+            description="Raise an execution error.",
+        )
+
+    async def execute(
+        self,
+        arguments: dict[str, Any],
+        context: ToolContext | None = None,
+    ) -> ToolResult:
+        """Raise an intentional execution exception."""
+        raise RuntimeError("Intentional tool failure.")
+
+
+@pytest.mark.asyncio
+async def test_executor_runs_registered_tool() -> None:
+    """Executor should run a registered tool successfully."""
+    registry = ToolRegistry()
+    registry.register(EchoTool())
+
+    executor = ToolExecutor(registry)
+    request = ToolRequest(
+        tool_name="echo",
+        arguments={"message": "Hello from the executor."},
+    )
+
+    result = await executor.execute(request)
+
+    assert result.success is True
+    assert result.tool_name == "echo"
+    assert result.output == "Hello from the executor."
+    assert result.error is None
+    assert result.request_id == request.request_id
+
+
+@pytest.mark.asyncio
+async def test_executor_creates_default_context() -> None:
+    """Executor should create a context using the request identifier."""
+    registry = ToolRegistry()
+    registry.register(EchoTool())
+
+    executor = ToolExecutor(registry)
+    request = ToolRequest(
+        tool_name="echo",
+        arguments={"message": "Context test"},
+    )
+
+    result = await executor.execute(request)
+
+    assert result.success is True
+    assert result.metadata["request_id"] == request.request_id
+
+
+@pytest.mark.asyncio
+async def test_executor_uses_supplied_context() -> None:
+    """Executor should pass a supplied context to the tool."""
+    registry = ToolRegistry()
+    registry.register(EchoTool())
+
+    executor = ToolExecutor(registry)
+    request = ToolRequest(
+        tool_name="echo",
+        arguments={"message": "Custom context"},
+    )
+    context = ToolContext(
+        request_id="custom-request-id",
+        metadata={"source": "test"},
+    )
+
+    result = await executor.execute(
+        request=request,
+        context=context,
+    )
+
+    assert result.success is True
+    assert result.metadata["request_id"] == "custom-request-id"
+    assert result.request_id == request.request_id
+
+
+@pytest.mark.asyncio
+async def test_executor_returns_failure_for_unknown_tool() -> None:
+    """Executor should normalize unknown-tool errors."""
+    executor = ToolExecutor(ToolRegistry())
+    request = ToolRequest(tool_name="missing-tool")
+
+    result = await executor.execute(request)
+
+    assert result.success is False
+    assert result.tool_name == "missing-tool"
+    assert result.output is None
+    assert result.error is not None
+    assert "missing-tool" in result.error
+    assert result.request_id == request.request_id
+
+
+@pytest.mark.asyncio
+async def test_executor_returns_failure_for_tool_exception() -> None:
+    """Executor should normalize unexpected execution exceptions."""
+    registry = ToolRegistry()
+    registry.register(FailingTool())
+
+    executor = ToolExecutor(registry)
+    request = ToolRequest(tool_name="failing-tool")
+
+    result = await executor.execute(request)
+
+    assert result.success is False
+    assert result.tool_name == "failing-tool"
+    assert result.error == (
+        "Tool execution failed: Intentional tool failure."
+    )
+    assert result.request_id == request.request_id
+
+
+def test_executor_exposes_registry() -> None:
+    """Executor should expose its configured registry."""
+    registry = ToolRegistry()
+    executor = ToolExecutor(registry)
+
+    assert executor.registry is registry
+
+## Export - code src\full_stack_ai_shared\tools\__init__.py
+
+"""Shared AI tool abstractions and execution services."""
+
+from full_stack_ai_shared.tools.base import BaseTool
+from full_stack_ai_shared.tools.context import ToolContext
+from full_stack_ai_shared.tools.exceptions import (
+    ToolAlreadyRegisteredError,
+    ToolError,
+    ToolNotFoundError,
+)
+from full_stack_ai_shared.tools.executor import ToolExecutor
+from full_stack_ai_shared.tools.models import (
+    ToolDefinition,
+    ToolRequest,
+    ToolResult,
+)
+from full_stack_ai_shared.tools.registry import ToolRegistry
+
+__all__ = [
+    "BaseTool",
+    "ToolAlreadyRegisteredError",
+    "ToolContext",
+    "ToolDefinition",
+    "ToolError",
+    "ToolExecutor",
+    "ToolNotFoundError",
+    "ToolRegistry",
+    "ToolRequest",
+    "ToolResult",
+]
+
+## 

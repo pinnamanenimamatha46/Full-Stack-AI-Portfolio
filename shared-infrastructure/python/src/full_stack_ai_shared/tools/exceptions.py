@@ -2,36 +2,18 @@
 
 
 class ToolError(Exception):
-    """Base exception for all shared tool framework errors."""
-
-
-class ToolNotFoundError(ToolError):
-    """Raised when a requested tool is not registered."""
-
-    def __init__(self, tool_name: str) -> None:
-        """Initialize the missing-tool error."""
-        super().__init__(f"Tool '{tool_name}' is not registered.")
-        self.tool_name = tool_name
+    """Base exception for tool-related errors."""
 
 
 class ToolAlreadyRegisteredError(ToolError):
-    """Raised when a tool name is registered more than once."""
+    """Raised when attempting to register a duplicate tool."""
 
     def __init__(self, tool_name: str) -> None:
-        """Initialize the duplicate-registration error."""
-        super().__init__(f"Tool '{tool_name}' is already registered.")
-        self.tool_name = tool_name
+        super().__init__(f"Tool '{tool_name}' is already registered")
 
 
-class ToolExecutionError(ToolError):
-    """Raised when a tool fails during execution."""
+class ToolNotFoundError(ToolError):
+    """Raised when a requested tool cannot be found."""
 
-    def __init__(
-        self,
-        tool_name: str,
-        message: str,
-    ) -> None:
-        """Initialize the tool execution error."""
-        super().__init__(f"Tool '{tool_name}' execution failed: {message}")
-        self.tool_name = tool_name
-        self.message = message
+    def __init__(self, tool_name: str) -> None:
+        super().__init__(f"Tool '{tool_name}' is not registered")

@@ -1,12 +1,12 @@
-"""Tests for shared AI tool execution context."""
+"""Tests for the shared AI-tool execution context."""
 
 import pytest
 
-from full_stack_ai_shared.tools.context import ToolContext
+from full_stack_ai_shared.tools import ToolContext
 
 
 def test_tool_context_defaults() -> None:
-    """ToolContext should provide generated and empty default values."""
+    """ToolContext should provide generated defaults."""
     context = ToolContext()
 
     assert context.execution_id
@@ -15,81 +15,187 @@ def test_tool_context_defaults() -> None:
     assert context.metadata == {}
 
 
-def test_tool_context_accepts_execution_details() -> None:
-    """ToolContext should store agent, user, and metadata values."""
+def test_tool_context_generates_unique_execution_ids() -> None:
+    """ToolContext instances should receive unique execution IDs."""
+    first_context = ToolContext()
+    second_context = ToolContext()
+
+    assert first_context.execution_id != second_context.execution_id
+
+
+def test_tool_context_accepts_identity_values() -> None:
+    """ToolContext should preserve supplied identity values."""
     context = ToolContext(
-        execution_id="execution-123",
-        agent_name="maintenance-agent",
-        user_id="user-456",
-        metadata={"environment": "test"},
+        agent_name="diagnostic-agent",
+        user_id="user-101",
     )
 
-    assert context.execution_id == "execution-123"
-    assert context.agent_name == "maintenance-agent"
-    assert context.user_id == "user-456"
-    assert context.metadata == {"environment": "test"}
+    assert context.agent_name == "diagnostic-agent"
+    assert context.user_id == "user-101"
 
 
-def test_tool_context_gets_metadata_value() -> None:
-    """ToolContext should return stored metadata."""
+def test_tool_context_normalizes_identity_values() -> None:
+    """ToolContext should remove surrounding whitespace."""
     context = ToolContext(
-        metadata={"asset_id": "PUMP-101"},
+        execution_id="  execution-101  ",
+        agent_name="  diagnostic-agent  ",
+        user_id="  user-101  ",
     )
 
-    assert context.get_metadata("asset_id") == "PUMP-101"
+    assert context.execution_id == "execution-101"
+    assert context.agent_name == "diagnostic-agent"
+    assert context.user_id == "user-101"
 
 
-def test_tool_context_returns_metadata_default() -> None:
+def test_tool_context_accepts_initial_metadata() -> None:
+    """ToolContext should preserve supplied metadata."""
+    context = ToolContext(
+        metadata={
+            "asset_id": "pump-101",
+            "priority": "high",
+        }
+    )
+
+    assert context.metadata == {
+        "asset_id": "pump-101",
+        "priority": "high",
+    }
+
+
+def test_tool_context_sets_metadata() -> None:
+    """ToolContext should store metadata values."""
+    context = ToolContext()
+
+    context.set_metadata("asset_id", "compressor-202")
+
+    assert context.metadata["asset_id"] == "compressor-202"
+
+
+def test_tool_context_normalizes_metadata_keys() -> None:
+    """Metadata operations should normalize key whitespace."""
+    context = ToolContext()
+
+    context.set_metadata("  asset_id  ", "pump-101")
+
+    assert context.metadata == {
+        "asset_id": "pump-101",
+    }
+    assert context.get_metadata("  asset_id  ") == "pump-101"
+
+
+def test_tool_context_gets_existing_metadata() -> None:
+    """ToolContext should return existing metadata values."""
+    context = ToolContext(
+        metadata={
+            "asset_id": "pump-101",
+        }
+    )
+
+    assert context.get_metadata("asset_id") == "pump-101"
+
+
+def test_tool_context_gets_default_for_missing_metadata() -> None:
     """ToolContext should return a default for missing metadata."""
     context = ToolContext()
 
-    assert context.get_metadata("asset_id", "UNKNOWN") == "UNKNOWN"
+    result = context.get_metadata(
+        "priority",
+        "normal",
+    )
+
+    assert result == "normal"
 
 
-def test_tool_context_sets_metadata_value() -> None:
-    """ToolContext should add and update metadata."""
+@pytest.mark.parametrize(
+    ("field_name", "field_value", "message"),
+    [
+        (
+            "execution_id",
+            "",
+            "Tool execution ID must not be empty.",
+        ),
+        (
+            "execution_id",
+            "   ",
+            "Tool execution ID must not be empty.",
+        ),
+        (
+            "agent_name",
+            "",
+            "Agent name must not be empty.",
+        ),
+        (
+            "agent_name",
+            "   ",
+            "Agent name must not be empty.",
+        ),
+        (
+            "user_id",
+            "",
+            "User ID must not be empty.",
+        ),
+        (
+            "user_id",
+            "   ",
+            "User ID must not be empty.",
+        ),
+    ],
+)
+def test_tool_context_rejects_empty_identity_values(
+    field_name: str,
+    field_value: str,
+    message: str,
+) -> None:
+    """ToolContext should reject empty identity fields."""
+    values = {
+        field_name: field_value,
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=message,
+    ):
+        ToolContext(**values)
+
+
+@pytest.mark.parametrize(
+    "metadata_key",
+    [
+        "",
+        "   ",
+    ],
+)
+def test_tool_context_set_metadata_rejects_empty_key(
+    metadata_key: str,
+) -> None:
+    """set_metadata should reject empty keys."""
     context = ToolContext()
 
-    context.set_metadata("region", "west")
-    assert context.metadata == {"region": "west"}
-
-    context.set_metadata("region", "central")
-    assert context.metadata == {"region": "central"}
-
-
-def test_tool_context_rejects_empty_execution_id() -> None:
-    """ToolContext should reject an empty execution identifier."""
     with pytest.raises(
         ValueError,
-        match="Execution ID must not be empty",
+        match="Metadata key must not be empty.",
     ):
-        ToolContext(execution_id=" ")
+        context.set_metadata(
+            metadata_key,
+            "value",
+        )
 
 
-def test_tool_context_rejects_empty_agent_name() -> None:
-    """ToolContext should reject an empty provided agent name."""
-    with pytest.raises(
-        ValueError,
-        match="Agent name must not be empty",
-    ):
-        ToolContext(agent_name=" ")
-
-
-def test_tool_context_rejects_empty_user_id() -> None:
-    """ToolContext should reject an empty provided user identifier."""
-    with pytest.raises(
-        ValueError,
-        match="User ID must not be empty",
-    ):
-        ToolContext(user_id=" ")
-
-
-def test_tool_context_rejects_empty_metadata_key() -> None:
-    """ToolContext should reject an empty metadata key."""
+@pytest.mark.parametrize(
+    "metadata_key",
+    [
+        "",
+        "   ",
+    ],
+)
+def test_tool_context_get_metadata_rejects_empty_key(
+    metadata_key: str,
+) -> None:
+    """get_metadata should reject empty keys."""
     context = ToolContext()
 
     with pytest.raises(
         ValueError,
-        match="Metadata key must not be empty",
+        match="Metadata key must not be empty.",
     ):
-        context.set_metadata(" ", "value")
+        context.get_metadata(metadata_key)
