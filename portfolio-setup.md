@@ -3733,7 +3733,4858 @@ git commit -m "Add shared LLM abstraction and provider factory"
 git push origin main
 git status
 
+## Phase 3: Agent Framework
+The next step is to build a reusable agent framework that every AI application in your portfolio will use.
+
+## Build the shared Agent Framework that every AI platform in your portfolio will use.
+
+## Step 1 — Navigate to the agents package
+cd C:\projects\Full-Stack-AI-Portfolio\shared-infrastructure\python
+
+## Step 2 — Create the directory structure
+New-Item -ItemType Directory -Force src\full_stack_ai_shared\agents | Out-Null
+
+## Step 3 — Create the files
+
+New-Item src\full_stack_ai_shared\agents\__init__.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\agents\base.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\agents\state.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\agents\memory.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\agents\planner.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\agents\executor.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\agents\tools.py -ItemType File -Force
+New-Item src\full_stack_ai_shared\agents\messages.py -ItemType File -Force
+
+## Step 4 — Create tests
+New-Item tests\test_agents.py -ItemType File -Force
+
+## step 5 — Run the quality checks
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Implement the base agent models
+code src\full_stack_ai_shared\agents\base.py
+
+"""Base abstractions for reusable AI agents."""
+
+from abc import ABC, abstractmethod
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 
+class AgentRequest(BaseModel):
+    """Input passed to an AI agent."""
+
+    task: str = Field(min_length=1)
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
+class AgentResult(BaseModel):
+    """Standard result returned by an AI agent."""
+
+    agent_name: str
+    success: bool
+    output: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class BaseAgent(ABC):
+    """Base interface implemented by all portfolio agents."""
+
+    def __init__(self, name: str) -> None:
+        normalized_name = name.strip()
+
+        if not normalized_name:
+            raise ValueError("Agent name cannot be empty.")
+
+        self._name = normalized_name
+
+    @property
+    def name(self) -> str:
+        """Return the agent name."""
+
+        return self._name
+
+    @abstractmethod
+    async def run(self, request: AgentRequest) -> AgentResult:
+        """Execute an agent task and return a standard result."""
+
+## Update - code src\full_stack_ai_shared\agents\__init__.py
+
+"""Shared AI agent abstractions."""
+
+from full_stack_ai_shared.agents.base import (
+    AgentRequest,
+    AgentResult,
+    BaseAgent,
+)
+
+__all__ = [
+    "AgentRequest",
+    "AgentResult",
+    "BaseAgent",
+]
+
+## Add - code tests\test_agents.py
+
+"""Tests for shared agent abstractions."""
+
+import pytest
+
+from full_stack_ai_shared.agents import (
+    AgentRequest,
+    AgentResult,
+    BaseAgent,
+)
+
+
+class EchoAgent(BaseAgent):
+    """Simple test agent."""
+
+    async def run(self, request: AgentRequest) -> AgentResult:
+        return AgentResult(
+            agent_name=self.name,
+            success=True,
+            output=f"Processed: {request.task}",
+            metadata={"context_size": len(request.context)},
+        )
+
+
+def test_agent_request_defaults() -> None:
+    request = AgentRequest(task="Analyze equipment health")
+
+    assert request.task == "Analyze equipment health"
+    assert request.context == {}
+
+
+def test_agent_result() -> None:
+    result = AgentResult(
+        agent_name="diagnostic-agent",
+        success=True,
+        output="No critical anomaly detected.",
+    )
+
+    assert result.agent_name == "diagnostic-agent"
+    assert result.success is True
+    assert result.metadata == {}
+
+
+def test_agent_rejects_empty_name() -> None:
+    with pytest.raises(
+        ValueError,
+        match="Agent name cannot be empty",
+    ):
+        EchoAgent("")
+
+
+@pytest.mark.asyncio
+async def test_agent_run() -> None:
+    agent = EchoAgent("echo-agent")
+    request = AgentRequest(
+        task="Inspect compressor vibration",
+        context={"asset_id": "CMP-1001"},
+    )
+
+    result = await agent.run(request)
+
+    assert agent.name == "echo-agent"
+    assert result.success is True
+    assert result.output == "Processed: Inspect compressor vibration"
+    assert result.metadata["context_size"] == 1
+
+## Run
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Implement agent state:
+
+## code src\full_stack_ai_shared\agents\state.py
+
+"""Shared state models for AI-agent execution."""
+
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
+from uuid import uuid4
+
+from pydantic import BaseModel, Field
+
+
+class AgentStatus(StrEnum):
+    """Supported agent execution states."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class AgentState(BaseModel):
+    """Mutable execution state shared across agent workflow steps."""
+
+    execution_id: str = Field(default_factory=lambda: str(uuid4()))
+    status: AgentStatus = AgentStatus.PENDING
+    current_step: str | None = None
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    outputs: dict[str, Any] = Field(default_factory=dict)
+    errors: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    def mark_running(self, step: str | None = None) -> None:
+        """Mark the workflow as running."""
+
+        self.status = AgentStatus.RUNNING
+        self.current_step = step
+        self.updated_at = datetime.now(UTC)
+
+    def mark_completed(self, outputs: dict[str, Any] | None = None) -> None:
+        """Mark the workflow as completed."""
+
+        self.status = AgentStatus.COMPLETED
+        self.current_step = None
+
+        if outputs:
+            self.outputs.update(outputs)
+
+        self.updated_at = datetime.now(UTC)
+
+    def mark_failed(self, error: str) -> None:
+        """Mark the workflow as failed and record an error."""
+
+        self.status = AgentStatus.FAILED
+        self.current_step = None
+        self.errors.append(error)
+        self.updated_at = datetime.now(UTC)
+
+## Update - code src\full_stack_ai_shared\agents\__init__.py
+
+"""
+Shared AI agent abstractions.
+
+This package exposes the public API for the shared AI agent framework.
+"""
+
+from full_stack_ai_shared.agents.base import (
+    AgentRequest,
+    AgentResult,
+    BaseAgent,
+)
+from full_stack_ai_shared.agents.state import (
+    AgentState,
+    AgentStatus,
+)
+
+__all__ = [
+    "AgentRequest",
+    "AgentResult",
+    "AgentState",
+    "AgentStatus",
+    "BaseAgent",
+]
+
+## Append - code tests\test_agents.py
+
+"""Tests for shared AI-agent abstractions and execution state."""
+
+import pytest
+
+from full_stack_ai_shared.agents import (
+    AgentRequest,
+    AgentResult,
+    AgentState,
+    AgentStatus,
+    BaseAgent,
+)
+
+
+class EchoAgent(BaseAgent):
+    """Simple agent implementation used for testing."""
+
+    async def run(self, request: AgentRequest) -> AgentResult:
+        """Return the submitted task as a successful result."""
+        return AgentResult(
+            agent_name=self.name,
+            success=True,
+            output=f"Processed: {request.task}",
+            metadata={"context_size": len(request.context)},
+        )
+
+
+def test_agent_request_defaults() -> None:
+    """AgentRequest should provide an empty context by default."""
+    request = AgentRequest(task="Analyze equipment health")
+
+    assert request.task == "Analyze equipment health"
+    assert request.context == {}
+
+
+def test_agent_result_defaults() -> None:
+    """AgentResult should provide empty metadata by default."""
+    result = AgentResult(
+        agent_name="diagnostic-agent",
+        success=True,
+        output="No critical anomaly detected.",
+    )
+
+    assert result.agent_name == "diagnostic-agent"
+    assert result.success is True
+    assert result.output == "No critical anomaly detected."
+    assert result.metadata == {}
+
+
+def test_agent_rejects_empty_name() -> None:
+    """BaseAgent should reject an empty agent name."""
+    with pytest.raises(
+        ValueError,
+        match="Agent name cannot be empty",
+    ):
+        EchoAgent("")
+
+
+@pytest.mark.asyncio
+async def test_agent_run() -> None:
+    """An agent should process a request and return an AgentResult."""
+    agent = EchoAgent("echo-agent")
+    request = AgentRequest(
+        task="Inspect compressor vibration",
+        context={"asset_id": "CMP-1001"},
+    )
+
+    result = await agent.run(request)
+
+    assert agent.name == "echo-agent"
+    assert result.agent_name == "echo-agent"
+    assert result.success is True
+    assert result.output == "Processed: Inspect compressor vibration"
+    assert result.metadata == {"context_size": 1}
+
+
+def test_agent_state_defaults() -> None:
+    """AgentState should initialize with pending execution defaults."""
+    state = AgentState()
+
+    assert state.execution_id
+    assert state.status == AgentStatus.PENDING
+    assert state.current_step is None
+    assert state.inputs == {}
+    assert state.outputs == {}
+    assert state.errors == []
+
+
+def test_agent_state_marks_running() -> None:
+    """AgentState should transition to running."""
+    state = AgentState()
+
+    state.mark_running("planning")
+
+    assert state.status == AgentStatus.RUNNING
+    assert state.current_step == "planning"
+
+
+def test_agent_state_marks_completed() -> None:
+    """AgentState should store outputs when execution completes."""
+    state = AgentState()
+    state.mark_running("execution")
+
+    state.mark_completed({"result": "success"})
+
+    assert state.status == AgentStatus.COMPLETED
+    assert state.current_step is None
+    assert state.outputs == {"result": "success"}
+    assert state.errors == []
+
+
+def test_agent_state_marks_failed() -> None:
+    """AgentState should store an error when execution fails."""
+    state = AgentState()
+    state.mark_running("tool-execution")
+
+    state.mark_failed("Tool invocation failed.")
+
+    assert state.status == AgentStatus.FAILED
+    assert state.current_step is None
+    assert state.errors == ["Tool invocation failed."]
+
+## Run
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Implement shared agent memory: 
+
+## code src\full_stack_ai_shared\agents\memory.py
+
+"""In-memory storage for agent messages and working data."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class MemoryEntry(BaseModel):
+    """Single value stored in agent memory."""
+
+    key: str
+    value: Any
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentMemory:
+    """Simple reusable in-memory store for agent workflows."""
+
+    def __init__(self) -> None:
+        self._entries: dict[str, MemoryEntry] = {}
+
+    def set(
+        self,
+        key: str,
+        value: Any,
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> MemoryEntry:
+        """Store or replace a memory entry."""
+
+        normalized_key = key.strip()
+
+        if not normalized_key:
+            raise ValueError("Memory key cannot be empty.")
+
+        entry = MemoryEntry(
+            key=normalized_key,
+            value=value,
+            metadata=metadata or {},
+        )
+
+        self._entries[normalized_key] = entry
+        return entry
+
+    def get(self, key: str) -> MemoryEntry | None:
+        """Return a memory entry by key."""
+
+        return self._entries.get(key)
+
+    def remove(self, key: str) -> MemoryEntry | None:
+        """Remove and return a memory entry."""
+
+        return self._entries.pop(key, None)
+
+    def contains(self, key: str) -> bool:
+        """Return whether a key exists in memory."""
+
+        return key in self._entries
+
+    def list_entries(self) -> list[MemoryEntry]:
+        """Return all memory entries."""
+
+        return list(self._entries.values())
+
+    def clear(self) -> None:
+        """Remove every entry from memory."""
+
+        self._entries.clear()
+
+    def __len__(self) -> int:
+        """Return the number of memory entries."""
+
+        return len(self._entries)
+
+## Update - code src\full_stack_ai_shared\agents\__init__.py
+
+"""
+Shared AI agent abstractions.
+
+This package exposes the public API for the shared AI agent framework,
+including base agent interfaces, execution state, and agent memory.
+"""
+
+from full_stack_ai_shared.agents.base import (
+    AgentRequest,
+    AgentResult,
+    BaseAgent,
+)
+from full_stack_ai_shared.agents.memory import (
+    AgentMemory,
+    MemoryEntry,
+)
+from full_stack_ai_shared.agents.state import (
+    AgentState,
+    AgentStatus,
+)
+
+__all__ = [
+    "AgentMemory",
+    "AgentRequest",
+    "AgentResult",
+    "AgentState",
+    "AgentStatus",
+    "BaseAgent",
+    "MemoryEntry",
+]
+
+## Append - code tests\test_agents.py:
+
+"""Tests for shared AI-agent abstractions, execution state, and memory."""
+
+import pytest
+
+from full_stack_ai_shared.agents import (
+    AgentMemory,
+    AgentRequest,
+    AgentResult,
+    AgentState,
+    AgentStatus,
+    BaseAgent,
+)
+
+
+class EchoAgent(BaseAgent):
+    """Simple agent implementation used for testing."""
+
+    async def run(self, request: AgentRequest) -> AgentResult:
+        """Return the submitted task as a successful result."""
+        return AgentResult(
+            agent_name=self.name,
+            success=True,
+            output=f"Processed: {request.task}",
+            metadata={"context_size": len(request.context)},
+        )
+
+
+def test_agent_request_defaults() -> None:
+    """AgentRequest should provide an empty context by default."""
+    request = AgentRequest(task="Analyze equipment health")
+
+    assert request.task == "Analyze equipment health"
+    assert request.context == {}
+
+
+def test_agent_result_defaults() -> None:
+    """AgentResult should provide empty metadata by default."""
+    result = AgentResult(
+        agent_name="diagnostic-agent",
+        success=True,
+        output="No critical anomaly detected.",
+    )
+
+    assert result.agent_name == "diagnostic-agent"
+    assert result.success is True
+    assert result.output == "No critical anomaly detected."
+    assert result.metadata == {}
+
+
+def test_agent_rejects_empty_name() -> None:
+    """BaseAgent should reject an empty agent name."""
+    with pytest.raises(
+        ValueError,
+        match="Agent name cannot be empty",
+    ):
+        EchoAgent("")
+
+
+@pytest.mark.asyncio
+async def test_agent_run() -> None:
+    """An agent should process a request and return an AgentResult."""
+    agent = EchoAgent("echo-agent")
+    request = AgentRequest(
+        task="Inspect compressor vibration",
+        context={"asset_id": "CMP-1001"},
+    )
+
+    result = await agent.run(request)
+
+    assert agent.name == "echo-agent"
+    assert result.agent_name == "echo-agent"
+    assert result.success is True
+    assert result.output == "Processed: Inspect compressor vibration"
+    assert result.metadata == {"context_size": 1}
+
+
+def test_agent_state_defaults() -> None:
+    """AgentState should initialize with pending execution defaults."""
+    state = AgentState()
+
+    assert state.execution_id
+    assert state.status == AgentStatus.PENDING
+    assert state.current_step is None
+    assert state.inputs == {}
+    assert state.outputs == {}
+    assert state.errors == []
+
+
+def test_agent_state_marks_running() -> None:
+    """AgentState should transition to running."""
+    state = AgentState()
+
+    state.mark_running("planning")
+
+    assert state.status == AgentStatus.RUNNING
+    assert state.current_step == "planning"
+
+
+def test_agent_state_marks_completed() -> None:
+    """AgentState should store outputs when execution completes."""
+    state = AgentState()
+    state.mark_running("execution")
+
+    state.mark_completed({"result": "success"})
+
+    assert state.status == AgentStatus.COMPLETED
+    assert state.current_step is None
+    assert state.outputs == {"result": "success"}
+    assert state.errors == []
+
+
+def test_agent_state_marks_failed() -> None:
+    """AgentState should store an error when execution fails."""
+    state = AgentState()
+    state.mark_running("tool-execution")
+
+    state.mark_failed("Tool invocation failed.")
+
+    assert state.status == AgentStatus.FAILED
+    assert state.current_step is None
+    assert state.errors == ["Tool invocation failed."]
+
+
+def test_agent_memory_stores_and_reads_entry() -> None:
+    """AgentMemory should store and retrieve an entry."""
+    memory = AgentMemory()
+
+    entry = memory.set(
+        "asset_id",
+        "CMP-1001",
+        metadata={"source": "request"},
+    )
+
+    stored_entry = memory.get("asset_id")
+
+    assert entry.key == "asset_id"
+    assert stored_entry is not None
+    assert stored_entry.value == "CMP-1001"
+    assert stored_entry.metadata == {"source": "request"}
+    assert memory.contains("asset_id") is True
+    assert len(memory) == 1
+
+
+def test_agent_memory_replaces_existing_entry() -> None:
+    """AgentMemory should replace an entry with the same key."""
+    memory = AgentMemory()
+
+    memory.set("status", "pending")
+    memory.set("status", "completed")
+
+    entry = memory.get("status")
+
+    assert entry is not None
+    assert entry.value == "completed"
+    assert len(memory) == 1
+
+
+def test_agent_memory_removes_entry() -> None:
+    """AgentMemory should remove and return an existing entry."""
+    memory = AgentMemory()
+    memory.set("temporary", 123)
+
+    removed = memory.remove("temporary")
+
+    assert removed is not None
+    assert removed.value == 123
+    assert memory.contains("temporary") is False
+    assert len(memory) == 0
+
+
+def test_agent_memory_lists_entries() -> None:
+    """AgentMemory should list entries in insertion order."""
+    memory = AgentMemory()
+    memory.set("first", 1)
+    memory.set("second", 2)
+
+    entries = memory.list_entries()
+
+    assert [entry.key for entry in entries] == ["first", "second"]
+
+
+def test_agent_memory_clears_entries() -> None:
+    """AgentMemory should clear all stored entries."""
+    memory = AgentMemory()
+    memory.set("first", 1)
+    memory.set("second", 2)
+
+    memory.clear()
+
+    assert len(memory) == 0
+    assert memory.list_entries() == []
+
+
+def test_agent_memory_rejects_empty_key() -> None:
+    """AgentMemory should reject an empty key."""
+    memory = AgentMemory()
+
+    with pytest.raises(
+        ValueError,
+        match="Memory key cannot be empty",
+    ):
+        memory.set("", "value")
+
+## Run
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Step 10 — Build the Shared RAG Package:
+
+## Step 10.1 — Create the RAG Package Structure
+
+## Create the RAG package directory:
+New-Item `
+    -ItemType Directory `
+    -Force `
+    src\full_stack_ai_shared\rag |
+    Out-Null
+
+## Create the initial Python files:
+
+$ragFiles = @(
+    "__init__.py",
+    "models.py",
+    "chunking.py",
+    "embeddings.py",
+    "vector_store.py",
+    "retriever.py",
+    "pipeline.py"
+)
+
+foreach ($file in $ragFiles) {
+    New-Item `
+        -ItemType File `
+        -Force `
+        "src\full_stack_ai_shared\rag\$file" |
+        Out-Null
+}
+
+## Create test file:
+
+New-Item `
+    -ItemType File `
+    -Force `
+    tests\test_rag.py |
+    Out-Null
+
+## Verify the package structure:
+
+Get-ChildItem `
+    src\full_stack_ai_shared\rag `
+    -Recurse
+
+## Verify test file
+
+Test-Path tests\test_rag.py
+True
+
+## Open the new package in VS Code:
+
+## code src\full_stack_ai_shared\rag
+
+## Run the existing test suite before adding code:  uv run pytest -v
+
+## Step 10.2 — Build the RAG Data Models
+
+## 1. Open models.py
+
+## code src\full_stack_ai_shared\rag\models.py
+
+```python
+"""Core data models for retrieval-augmented generation workflows."""
+
+from dataclasses import dataclass, field
+from typing import Any
+from uuid import uuid4
+
+
+@dataclass(slots=True)
+class Document:
+    """Represent a source document before text chunking."""
+
+    content: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+    document_id: str = field(default_factory=lambda: str(uuid4()))
+
+    def __post_init__(self) -> None:
+        """Validate the document after initialization."""
+        if not self.content.strip():
+            raise ValueError("Document content must not be empty.")
+
+        if not self.document_id.strip():
+            raise ValueError("Document ID must not be empty.")
+
+
+@dataclass(slots=True)
+class DocumentChunk:
+    """Represent a searchable chunk created from a source document."""
+
+    document_id: str
+    content: str
+    chunk_index: int
+    start_char: int
+    end_char: int
+    metadata: dict[str, Any] = field(default_factory=dict)
+    chunk_id: str = field(default_factory=lambda: str(uuid4()))
+
+    def __post_init__(self) -> None:
+        """Validate the document chunk after initialization."""
+        if not self.document_id.strip():
+            raise ValueError("Document ID must not be empty.")
+
+        if not self.content.strip():
+            raise ValueError("Document chunk content must not be empty.")
+
+        if self.chunk_index < 0:
+            raise ValueError("Chunk index must not be negative.")
+
+        if self.start_char < 0:
+            raise ValueError("Start character position must not be negative.")
+
+        if self.end_char <= self.start_char:
+            raise ValueError(
+                "End character position must be greater than start character position."
+            )
+
+        if not self.chunk_id.strip():
+            raise ValueError("Chunk ID must not be empty.")
+
+
+@dataclass(slots=True)
+class SearchResult:
+    """Represent a document chunk returned by semantic retrieval."""
+
+    chunk: DocumentChunk
+    score: float
+
+    def __post_init__(self) -> None:
+        """Validate the search result after initialization."""
+        if not 0.0 <= self.score <= 1.0:
+            raise ValueError(
+                "Search result score must be between 0.0 and 1.0."
+            )
+```
+
+
+## 2.   Export the Models from rag/__init__.py
+
+## code src\full_stack_ai_shared\rag\__init__.py
+
+"""Shared retrieval-augmented generation abstractions."""
+
+from full_stack_ai_shared.rag.models import (
+    Document,
+    DocumentChunk,
+    SearchResult,
+)
+
+__all__ = [
+    "Document",
+    "DocumentChunk",
+    "SearchResult",
+]
+
+## 3. Add the RAG Model Tests:  code tests\test_rag.py
+
+"""Tests for shared retrieval-augmented generation components."""
+
+import pytest
+
+from full_stack_ai_shared.rag import (
+    Document,
+    DocumentChunk,
+    TextChunker,
+)
+
+
+def test_document_defaults() -> None:
+    """Document should provide generated identifiers and empty metadata."""
+    document = Document(content="Enterprise maintenance document.")
+
+    assert document.document_id
+    assert document.content == "Enterprise maintenance document."
+    assert document.metadata == {}
+
+
+def test_document_rejects_empty_content() -> None:
+    """Document should reject empty or whitespace-only content."""
+    with pytest.raises(
+        ValueError,
+        match="Document content must not be empty.",
+    ):
+        Document(content="")
+
+
+def test_document_chunk_defaults() -> None:
+    """DocumentChunk should store chunk location information."""
+    chunk = DocumentChunk(
+        document_id="document-123",
+        content="Chunk content",
+        chunk_index=0,
+        start_char=0,
+        end_char=13,
+    )
+
+    assert chunk.document_id == "document-123"
+    assert chunk.content == "Chunk content"
+    assert chunk.chunk_index == 0
+    assert chunk.start_char == 0
+    assert chunk.end_char == 13
+    assert chunk.metadata == {}
+
+
+def test_text_chunker_returns_single_chunk_for_short_document() -> None:
+    """Text shorter than the configured size should remain one chunk."""
+    document = Document(content="Short enterprise document.")
+
+    chunker = TextChunker(
+        chunk_size=100,
+        overlap=20,
+    )
+
+    chunks = chunker.chunk(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].document_id == document.document_id
+    assert chunks[0].content == document.content
+    assert chunks[0].chunk_index == 0
+    assert chunks[0].start_char == 0
+    assert chunks[0].end_char == len(document.content)
+
+
+def test_text_chunker_splits_document_with_overlap() -> None:
+    """Consecutive chunks should contain the configured overlap."""
+    document = Document(content="ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+    chunker = TextChunker(
+        chunk_size=10,
+        overlap=3,
+    )
+
+    chunks = chunker.chunk(document)
+
+    assert [chunk.content for chunk in chunks] == [
+        "ABCDEFGHIJ",
+        "HIJKLMNOPQ",
+        "OPQRSTUVWX",
+        "VWXYZ",
+    ]
+
+    assert [chunk.chunk_index for chunk in chunks] == [0, 1, 2, 3]
+    assert [chunk.start_char for chunk in chunks] == [0, 7, 14, 21]
+    assert [chunk.end_char for chunk in chunks] == [10, 17, 24, 26]
+
+    assert chunks[0].content[-3:] == chunks[1].content[:3]
+    assert chunks[1].content[-3:] == chunks[2].content[:3]
+    assert chunks[2].content[-3:] == chunks[3].content[:3]
+
+
+def test_text_chunker_preserves_document_metadata() -> None:
+    """Each chunk should contain the source document metadata."""
+    document = Document(
+        content="ABCDEFGHIJKLMNO",
+        metadata={
+            "source": "maintenance-manual.pdf",
+            "department": "engineering",
+        },
+    )
+
+    chunker = TextChunker(
+        chunk_size=10,
+        overlap=2,
+    )
+
+    chunks = chunker.chunk(document)
+
+    assert len(chunks) == 2
+
+    for chunk in chunks:
+        assert chunk.metadata["source"] == "maintenance-manual.pdf"
+        assert chunk.metadata["department"] == "engineering"
+        assert chunk.metadata["chunk_index"] == chunk.chunk_index
+        assert chunk.metadata["start_char"] == chunk.start_char
+        assert chunk.metadata["end_char"] == chunk.end_char
+
+
+@pytest.mark.parametrize(
+    ("chunk_size", "overlap", "expected_message"),
+    [
+        (0, 0, "chunk_size must be greater than zero."),
+        (-1, 0, "chunk_size must be greater than zero."),
+        (100, -1, "overlap cannot be negative."),
+        (100, 100, "overlap must be smaller than chunk_size."),
+        (100, 101, "overlap must be smaller than chunk_size."),
+    ],
+)
+def test_text_chunker_rejects_invalid_configuration(
+    chunk_size: int,
+    overlap: int,
+    expected_message: str,
+) -> None:
+    """Invalid chunk settings should raise clear errors."""
+    with pytest.raises(ValueError, match=expected_message):
+        TextChunker(
+            chunk_size=chunk_size,
+            overlap=overlap,
+        )
+## Run
+
+## uv run ruff format .
+## uv run ruff check .
+## uv run mypy src
+## uv run pytest tests\test_rag.py -v
+## uv run pytest -v
+
+## uv run python -c "from full_stack_ai_shared.rag import Document, DocumentChunk, SearchResult; print(Document.__name__, DocumentChunk.__name__, SearchResult.__name__)" ## VERIFY PUBLIC IMPORTS
+
+## Run
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest tests\test_rag.py -v
+uv run pytest -v
+
+## Step 10.3 — Build the Text Chunking Engine
+
+## code src\full_stack_ai_shared\rag\chunking.py
+
+"""Text-chunking utilities for retrieval-augmented generation."""
+
+from full_stack_ai_shared.rag.models import Document, DocumentChunk
+
+
+class TextChunker:
+    """Split documents into overlapping text chunks.
+
+    Args:
+        chunk_size: Maximum number of characters in each chunk.
+        overlap: Number of characters shared between consecutive chunks.
+
+    Raises:
+        ValueError: If the chunk configuration is invalid.
+    """
+
+    def __init__(
+        self,
+        chunk_size: int = 500,
+        overlap: int = 100,
+    ) -> None:
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be greater than zero.")
+
+        if overlap < 0:
+            raise ValueError("overlap cannot be negative.")
+
+        if overlap >= chunk_size:
+            raise ValueError("overlap must be smaller than chunk_size.")
+
+        self.chunk_size = chunk_size
+        self.overlap = overlap
+
+    def chunk(self, document: Document) -> list[DocumentChunk]:
+        """Split a document into overlapping chunks.
+
+        Args:
+            document: Document whose content should be split.
+
+        Returns:
+            A list of document chunks in their original order.
+        """
+        content = document.content
+
+        if not content:
+            return []
+
+        chunks: list[DocumentChunk] = []
+        step_size = self.chunk_size - self.overlap
+        start_char = 0
+        chunk_index = 0
+
+        while start_char < len(content):
+            end_char = min(start_char + self.chunk_size, len(content))
+            chunk_content = content[start_char:end_char]
+
+            chunk_metadata = {
+                **document.metadata,
+                "chunk_index": chunk_index,
+                "start_char": start_char,
+                "end_char": end_char,
+            }
+
+            chunks.append(
+                DocumentChunk(
+                    document_id=document.document_id,
+                    content=chunk_content,
+                    chunk_index=chunk_index,
+                    start_char=start_char,
+                    end_char=end_char,
+                    metadata=chunk_metadata,
+                )
+            )
+
+            if end_char == len(content):
+                break
+
+            start_char += step_size
+            chunk_index += 1
+
+        return chunks
+
+2. Update the RAG public API - code src\full_stack_ai_shared\rag\__init__.py
+
+"""Shared retrieval-augmented generation abstractions."""
+
+from full_stack_ai_shared.rag.chunking import TextChunker
+from full_stack_ai_shared.rag.models import Document, DocumentChunk
+
+__all__ = [
+    "Document",
+    "DocumentChunk",
+    "TextChunker",
+]
+
+## 3. Add text-chunking tests
+
+## code tests/test_rag.py
+
+## Target public API
+
+from full_stack_ai_shared.rag import (
+    Document,
+    DocumentChunk,
+    TextChunker,
+)
+
+document = Document(
+    content="Very long enterprise document..."
+)
+
+chunker = TextChunker(
+    chunk_size=500,
+    overlap=100,
+)
+
+chunks = chunker.chunk(document)
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Step 11 — Build the Shared Vector Store Layer
+
+## Step 11.1 — Create the Files
+
+New-Item -ItemType File -Force `
+    src\full_stack_ai_shared\rag\embeddings.py, `
+    src\full_stack_ai_shared\rag\vector_store.py, `
+    tests\test_vector_store.py
+
+## Verify files
+
+Get-ChildItem src\full_stack_ai_shared\rag
+Get-ChildItem tests\test_vector_store.py
+
+## Step 11.2 — Update models.py code src\full_stack_ai_shared\rag\models.py
+
+"""Core data models for retrieval-augmented generation workflows."""
+
+from dataclasses import dataclass, field
+from typing import Any
+from uuid import uuid4
+
+
+@dataclass(slots=True)
+class Document:
+    """Represent a source document before text chunking."""
+
+    content: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+    document_id: str = field(default_factory=lambda: str(uuid4()))
+
+    def __post_init__(self) -> None:
+        """Validate the document after initialization."""
+        if not self.content.strip():
+            raise ValueError("Document content must not be empty.")
+
+        if not self.document_id.strip():
+            raise ValueError("Document ID must not be empty.")
+
+
+@dataclass(slots=True)
+class DocumentChunk:
+    """Represent a searchable chunk created from a source document."""
+
+    document_id: str
+    content: str
+    chunk_index: int
+    start_char: int
+    end_char: int
+    metadata: dict[str, Any] = field(default_factory=dict)
+    chunk_id: str = field(default_factory=lambda: str(uuid4()))
+
+    def __post_init__(self) -> None:
+        """Validate the document chunk after initialization."""
+        if not self.document_id.strip():
+            raise ValueError("Document ID must not be empty.")
+
+        if not self.content.strip():
+            raise ValueError("Chunk content must not be empty.")
+
+        if self.chunk_index < 0:
+            raise ValueError("Chunk index cannot be negative.")
+
+        if self.start_char < 0:
+            raise ValueError("Start character cannot be negative.")
+
+        if self.end_char < self.start_char:
+            raise ValueError(
+                "End character must be greater than or equal to start character."
+            )
+
+        if not self.chunk_id.strip():
+            raise ValueError("Chunk ID must not be empty.")
+
+
+@dataclass(slots=True, frozen=True)
+class SearchResult:
+    """Represent a vector-search result and its similarity score."""
+
+    chunk: DocumentChunk
+    score: float
+
+    def __post_init__(self) -> None:
+        """Validate the search result."""
+        if not -1.0 <= self.score <= 1.0:
+            raise ValueError(
+                "Search result score must be between -1.0 and 1.0."
+            )
+
+## Step 11.3 — Create embeddings.py     code src\full_stack_ai_shared\rag\embeddings.py
+
+"""Embedding provider abstractions for retrieval workflows."""
+
+from abc import ABC, abstractmethod
+from collections.abc import Sequence
+from hashlib import sha256
+from math import sqrt
+
+
+class EmbeddingProvider(ABC):
+    """Define the interface implemented by embedding providers."""
+
+    @property
+    @abstractmethod
+    def dimensions(self) -> int:
+        """Return the number of values in each embedding vector."""
+
+    @abstractmethod
+    def embed_text(self, text: str) -> list[float]:
+        """Generate an embedding for one text value."""
+
+    def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
+        """Generate embeddings for multiple text values."""
+        return [self.embed_text(text) for text in texts]
+
+
+class HashEmbeddingProvider(EmbeddingProvider):
+    """Generate deterministic local embeddings without an external API."""
+
+    def __init__(self, dimensions: int = 64) -> None:
+        """Initialize the deterministic embedding provider."""
+        if dimensions <= 0:
+            raise ValueError(
+                "Embedding dimensions must be greater than zero."
+            )
+
+        self._dimensions = dimensions
+
+    @property
+    def dimensions(self) -> int:
+        """Return the configured embedding dimensions."""
+        return self._dimensions
+
+    def embed_text(self, text: str) -> list[float]:
+        """Generate a normalized deterministic embedding."""
+        normalized_text = text.strip()
+
+        if not normalized_text:
+            raise ValueError("Text to embed must not be empty.")
+
+        vector = [0.0] * self.dimensions
+        tokens = normalized_text.lower().split()
+
+        for token in tokens:
+            digest = sha256(token.encode("utf-8")).digest()
+
+            for index, byte_value in enumerate(digest):
+                vector_index = index % self.dimensions
+                direction = 1.0 if byte_value % 2 == 0 else -1.0
+                magnitude = 1.0 + (byte_value / 255.0)
+                vector[vector_index] += direction * magnitude
+
+        return self._normalize(vector)
+
+    @staticmethod
+    def _normalize(vector: list[float]) -> list[float]:
+        """Normalize a vector to unit length."""
+        magnitude = sqrt(sum(value * value for value in vector))
+
+        if magnitude == 0:
+            return vector
+
+        return [value / magnitude for value in vector]
+
+## Pasted text(432).txt
+Document
+Step 11.2 — Update models.py
+
+Open:
+
+code src\full_stack_ai_shared\rag\models.py
+
+Replace the entire file with:
+
+"""Core data models for retrieval-augmented generation workflows."""
+
+from dataclasses import dataclass, field
+from typing import Any
+from uuid import uuid4
+
+
+@dataclass(slots=True)
+class Document:
+    """Represent a source document before text chunking."""
+
+    content: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+    document_id: str = field(default_factory=lambda: str(uuid4()))
+
+    def __post_init__(self) -> None:
+        """Validate the document after initialization."""
+        if not self.content.strip():
+            raise ValueError("Document content must not be empty.")
+
+        if not self.document_id.strip():
+            raise ValueError("Document ID must not be empty.")
+
+
+@dataclass(slots=True)
+class DocumentChunk:
+    """Represent a searchable chunk created from a source document."""
+
+    document_id: str
+    content: str
+    chunk_index: int
+    start_char: int
+    end_char: int
+    metadata: dict[str, Any] = field(default_factory=dict)
+    chunk_id: str = field(default_factory=lambda: str(uuid4()))
+
+    def __post_init__(self) -> None:
+        """Validate the document chunk after initialization."""
+        if not self.document_id.strip():
+            raise ValueError("Document ID must not be empty.")
+
+        if not self.content.strip():
+            raise ValueError("Chunk content must not be empty.")
+
+        if self.chunk_index < 0:
+            raise ValueError("Chunk index cannot be negative.")
+
+        if self.start_char < 0:
+            raise ValueError("Start character cannot be negative.")
+
+        if self.end_char < self.start_char:
+            raise ValueError(
+                "End character must be greater than or equal to start character."
+            )
+
+        if not self.chunk_id.strip():
+            raise ValueError("Chunk ID must not be empty.")
+
+
+@dataclass(slots=True, frozen=True)
+class SearchResult:
+    """Represent a vector-search result and its similarity score."""
+
+    chunk: DocumentChunk
+    score: float
+
+    def __post_init__(self) -> None:
+        """Validate the search result."""
+        if not -1.0 <= self.score <= 1.0:
+            raise ValueError(
+                "Search result score must be between -1.0 and 1.0."
+            )
+
+Save the file with:
+
+Ctrl + S
+
+Do not run tests yet because SearchResult is not exported and the vector-store files are still empty.
+
+Next: Step 11.3 — Create embeddings.py.
+
+next
+Step 11.3 — Create embeddings.py
+
+Open:
+
+code src\full_stack_ai_shared\rag\embeddings.py
+
+Replace the entire file with:
+
+"""Embedding provider abstractions for retrieval workflows."""
+
+from abc import ABC, abstractmethod
+from collections.abc import Sequence
+from hashlib import sha256
+from math import sqrt
+
+
+class EmbeddingProvider(ABC):
+    """Define the interface implemented by embedding providers."""
+
+    @property
+    @abstractmethod
+    def dimensions(self) -> int:
+        """Return the number of values in each embedding vector."""
+
+    @abstractmethod
+    def embed_text(self, text: str) -> list[float]:
+        """Generate an embedding for one text value."""
+
+    def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
+        """Generate embeddings for multiple text values."""
+        return [self.embed_text(text) for text in texts]
+
+
+class HashEmbeddingProvider(EmbeddingProvider):
+    """Generate deterministic local embeddings without an external API."""
+
+    def __init__(self, dimensions: int = 64) -> None:
+        """Initialize the deterministic embedding provider."""
+        if dimensions <= 0:
+            raise ValueError(
+                "Embedding dimensions must be greater than zero."
+            )
+
+        self._dimensions = dimensions
+
+    @property
+    def dimensions(self) -> int:
+        """Return the configured embedding dimensions."""
+        return self._dimensions
+
+    def embed_text(self, text: str) -> list[float]:
+        """Generate a normalized deterministic embedding."""
+        normalized_text = text.strip()
+
+        if not normalized_text:
+            raise ValueError("Text to embed must not be empty.")
+
+        vector = [0.0] * self.dimensions
+        tokens = normalized_text.lower().split()
+
+        for token in tokens:
+            digest = sha256(token.encode("utf-8")).digest()
+
+            for index, byte_value in enumerate(digest):
+                vector_index = index % self.dimensions
+                direction = 1.0 if byte_value % 2 == 0 else -1.0
+                magnitude = 1.0 + (byte_value / 255.0)
+                vector[vector_index] += direction * magnitude
+
+        return self._normalize(vector)
+
+    @staticmethod
+    def _normalize(vector: list[float]) -> list[float]:
+        """Normalize a vector to unit length."""
+        magnitude = sqrt(sum(value * value for value in vector))
+
+        if magnitude == 0:
+            return vector
+
+        return [value / magnitude for value in vector]
+
+Step 11.4 — Create vector_store.py      code src\full_stack_ai_shared\rag\vector_store.py
+
+"""Vector-store abstractions and in-memory implementation."""
+
+from abc import ABC, abstractmethod
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from math import sqrt
+from typing import Any
+
+from full_stack_ai_shared.rag.embeddings import EmbeddingProvider
+from full_stack_ai_shared.rag.models import DocumentChunk, SearchResult
+
+
+class VectorStore(ABC):
+    """Define the interface implemented by vector stores."""
+
+    @abstractmethod
+    def add(self, chunks: Sequence[DocumentChunk]) -> None:
+        """Add document chunks to the vector store."""
+
+    @abstractmethod
+    def search(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        metadata_filter: Mapping[str, Any] | None = None,
+    ) -> list[SearchResult]:
+        """Search for chunks similar to a query."""
+
+    @abstractmethod
+    def delete(self, chunk_ids: Sequence[str]) -> int:
+        """Delete chunks and return the number removed."""
+
+    @abstractmethod
+    def clear(self) -> None:
+        """Remove all stored chunks."""
+
+    @abstractmethod
+    def count(self) -> int:
+        """Return the number of stored chunks."""
+
+
+@dataclass(slots=True)
+class _StoredVector:
+    """Store a document chunk and its embedding."""
+
+    chunk: DocumentChunk
+    embedding: list[float]
+
+
+class InMemoryVectorStore(VectorStore):
+    """Store embeddings in memory and perform cosine-similarity search."""
+
+    def __init__(self, embedding_provider: EmbeddingProvider) -> None:
+        """Initialize the in-memory vector store."""
+        self._embedding_provider = embedding_provider
+        self._vectors: dict[str, _StoredVector] = {}
+
+    def add(self, chunks: Sequence[DocumentChunk]) -> None:
+        """Add or replace document chunks in the vector store."""
+        if not chunks:
+            return
+
+        embeddings = self._embedding_provider.embed_texts(
+            [chunk.content for chunk in chunks]
+        )
+
+        for chunk, embedding in zip(chunks, embeddings, strict=True):
+            self._validate_embedding(embedding)
+
+            self._vectors[chunk.chunk_id] = _StoredVector(
+                chunk=chunk,
+                embedding=embedding,
+            )
+
+    def search(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        metadata_filter: Mapping[str, Any] | None = None,
+    ) -> list[SearchResult]:
+        """Search stored chunks using cosine similarity."""
+        if not query.strip():
+            raise ValueError("Search query must not be empty.")
+
+        if top_k <= 0:
+            raise ValueError("top_k must be greater than zero.")
+
+        query_embedding = self._embedding_provider.embed_text(query)
+        self._validate_embedding(query_embedding)
+
+        results: list[SearchResult] = []
+
+        for stored_vector in self._vectors.values():
+            if not self._matches_metadata(
+                stored_vector.chunk,
+                metadata_filter,
+            ):
+                continue
+
+            score = self._cosine_similarity(
+                query_embedding,
+                stored_vector.embedding,
+            )
+
+            results.append(
+                SearchResult(
+                    chunk=stored_vector.chunk,
+                    score=score,
+                )
+            )
+
+        results.sort(
+            key=lambda result: result.score,
+            reverse=True,
+        )
+
+        return results[:top_k]
+
+    def delete(self, chunk_ids: Sequence[str]) -> int:
+        """Delete chunks and return the number removed."""
+        deleted_count = 0
+
+        for chunk_id in set(chunk_ids):
+            if self._vectors.pop(chunk_id, None) is not None:
+                deleted_count += 1
+
+        return deleted_count
+
+    def clear(self) -> None:
+        """Remove all stored vectors."""
+        self._vectors.clear()
+
+    def count(self) -> int:
+        """Return the number of stored vectors."""
+        return len(self._vectors)
+
+    def get(self, chunk_id: str) -> DocumentChunk | None:
+        """Return a stored chunk by its identifier."""
+        stored_vector = self._vectors.get(chunk_id)
+
+        if stored_vector is None:
+            return None
+
+        return stored_vector.chunk
+
+    def _validate_embedding(
+        self,
+        embedding: Sequence[float],
+    ) -> None:
+        """Validate that an embedding matches provider dimensions."""
+        if len(embedding) != self._embedding_provider.dimensions:
+            raise ValueError(
+                "Embedding dimensions do not match the configured provider."
+            )
+
+    @staticmethod
+    def _matches_metadata(
+        chunk: DocumentChunk,
+        metadata_filter: Mapping[str, Any] | None,
+    ) -> bool:
+        """Return whether a chunk matches requested metadata."""
+        if metadata_filter is None:
+            return True
+
+        return all(
+            chunk.metadata.get(key) == expected_value
+            for key, expected_value in metadata_filter.items()
+        )
+
+    @staticmethod
+    def _cosine_similarity(
+        first: Sequence[float],
+        second: Sequence[float],
+    ) -> float:
+        """Calculate cosine similarity between two vectors."""
+        if len(first) != len(second):
+            raise ValueError("Vectors must have matching dimensions.")
+
+        dot_product = sum(
+            first_value * second_value
+            for first_value, second_value in zip(
+                first,
+                second,
+                strict=True,
+            )
+        )
+        first_magnitude = sqrt(
+            sum(value * value for value in first)
+        )
+        second_magnitude = sqrt(
+            sum(value * value for value in second)
+        )
+
+        if first_magnitude == 0 or second_magnitude == 0:
+            return 0.0
+
+        score = dot_product / (
+            first_magnitude * second_magnitude
+        )
+
+        return max(-1.0, min(1.0, score))
+
+## Step 11.5 — Update the Public RAG API    code src\full_stack_ai_shared\rag\__init__.py
+
+"""Shared retrieval-augmented generation abstractions."""
+
+from full_stack_ai_shared.rag.chunking import TextChunker
+from full_stack_ai_shared.rag.embeddings import (
+    EmbeddingProvider,
+    HashEmbeddingProvider,
+)
+from full_stack_ai_shared.rag.models import (
+    Document,
+    DocumentChunk,
+    SearchResult,
+)
+from full_stack_ai_shared.rag.vector_store import (
+    InMemoryVectorStore,
+    VectorStore,
+)
+
+__all__ = [
+    "Document",
+    "DocumentChunk",
+    "EmbeddingProvider",
+    "HashEmbeddingProvider",
+    "InMemoryVectorStore",
+    "SearchResult",
+    "TextChunker",
+    "VectorStore",
+]
+
+## Run import check
+uv run python -c "from full_stack_ai_shared.rag import HashEmbeddingProvider, InMemoryVectorStore, SearchResult; print('RAG vector API imports passed')"
+RAG vector API imports passed
+
+## Step 11.6 — Add test_vector_store.py     code tests\test_vector_store.py
+
+"""Tests for shared embedding and vector-store components."""
+
+import pytest
+
+from full_stack_ai_shared.rag import (
+    DocumentChunk,
+    HashEmbeddingProvider,
+    InMemoryVectorStore,
+)
+
+
+def create_chunk(
+    content: str,
+    chunk_index: int,
+    *,
+    metadata: dict[str, str] | None = None,
+    chunk_id: str | None = None,
+) -> DocumentChunk:
+    """Create a document chunk for vector-store tests."""
+    if chunk_id is None:
+        return DocumentChunk(
+            document_id="document-123",
+            content=content,
+            chunk_index=chunk_index,
+            start_char=0,
+            end_char=len(content),
+            metadata=metadata or {},
+        )
+
+    return DocumentChunk(
+        document_id="document-123",
+        content=content,
+        chunk_index=chunk_index,
+        start_char=0,
+        end_char=len(content),
+        metadata=metadata or {},
+        chunk_id=chunk_id,
+    )
+
+
+def test_hash_embedding_provider_returns_expected_dimensions() -> None:
+    """Embedding provider should return the configured vector size."""
+    provider = HashEmbeddingProvider(dimensions=32)
+
+    embedding = provider.embed_text("Predictive maintenance analysis")
+
+    assert len(embedding) == 32
+
+
+def test_hash_embedding_provider_is_deterministic() -> None:
+    """Identical text should produce identical vectors."""
+    provider = HashEmbeddingProvider(dimensions=32)
+
+    first_embedding = provider.embed_text("Equipment vibration")
+    second_embedding = provider.embed_text("Equipment vibration")
+
+    assert first_embedding == second_embedding
+
+
+def test_hash_embedding_provider_rejects_invalid_dimensions() -> None:
+    """Embedding dimensions must be greater than zero."""
+    with pytest.raises(
+        ValueError,
+        match="Embedding dimensions must be greater than zero.",
+    ):
+        HashEmbeddingProvider(dimensions=0)
+
+
+def test_hash_embedding_provider_rejects_empty_text() -> None:
+    """Empty text should not be embedded."""
+    provider = HashEmbeddingProvider()
+
+    with pytest.raises(
+        ValueError,
+        match="Text to embed must not be empty.",
+    ):
+        provider.embed_text("   ")
+
+
+def test_vector_store_adds_chunks() -> None:
+    """Vector store should add document chunks."""
+    store = InMemoryVectorStore(HashEmbeddingProvider())
+
+    chunks = [
+        create_chunk("Pump vibration is elevated.", 0),
+        create_chunk("Motor temperature is normal.", 1),
+    ]
+
+    store.add(chunks)
+
+    assert store.count() == 2
+
+
+def test_vector_store_returns_chunk_by_id() -> None:
+    """Vector store should retrieve a chunk by identifier."""
+    store = InMemoryVectorStore(HashEmbeddingProvider())
+    chunk = create_chunk(
+        "Bearing inspection is required.",
+        0,
+        chunk_id="chunk-123",
+    )
+
+    store.add([chunk])
+
+    stored_chunk = store.get("chunk-123")
+
+    assert stored_chunk == chunk
+
+
+def test_vector_store_search_returns_ranked_results() -> None:
+    """Search should return results ordered by similarity."""
+    store = InMemoryVectorStore(HashEmbeddingProvider(dimensions=64))
+
+    vibration_chunk = create_chunk(
+        "Pump vibration indicates bearing wear.",
+        0,
+    )
+    finance_chunk = create_chunk(
+        "Quarterly finance report and revenue forecast.",
+        1,
+    )
+
+    store.add([vibration_chunk, finance_chunk])
+
+    results = store.search(
+        "pump vibration bearing",
+        top_k=2,
+    )
+
+    assert len(results) == 2
+    assert results[0].score >= results[1].score
+    assert results[0].chunk == vibration_chunk
+
+
+def test_vector_store_limits_search_results() -> None:
+    """Search should honor the requested top-k limit."""
+    store = InMemoryVectorStore(HashEmbeddingProvider())
+
+    store.add(
+        [
+            create_chunk("Pump maintenance record.", 0),
+            create_chunk("Motor maintenance record.", 1),
+            create_chunk("Compressor maintenance record.", 2),
+        ]
+    )
+
+    results = store.search("maintenance", top_k=2)
+
+    assert len(results) == 2
+
+
+def test_vector_store_filters_by_metadata() -> None:
+    """Search should filter chunks using metadata values."""
+    store = InMemoryVectorStore(HashEmbeddingProvider())
+
+    pump_chunk = create_chunk(
+        "Pump vibration maintenance record.",
+        0,
+        metadata={
+            "asset_type": "pump",
+            "site": "los-angeles",
+        },
+    )
+    motor_chunk = create_chunk(
+        "Motor vibration maintenance record.",
+        1,
+        metadata={
+            "asset_type": "motor",
+            "site": "los-angeles",
+        },
+    )
+
+    store.add([pump_chunk, motor_chunk])
+
+    results = store.search(
+        "vibration maintenance",
+        metadata_filter={"asset_type": "pump"},
+    )
+
+    assert len(results) == 1
+    assert results[0].chunk == pump_chunk
+
+
+def test_vector_store_replaces_existing_chunk() -> None:
+    """Adding the same chunk ID should replace its stored value."""
+    store = InMemoryVectorStore(HashEmbeddingProvider())
+
+    original_chunk = create_chunk(
+        "Original maintenance content.",
+        0,
+        chunk_id="shared-chunk-id",
+    )
+    updated_chunk = create_chunk(
+        "Updated maintenance content.",
+        0,
+        chunk_id="shared-chunk-id",
+    )
+
+    store.add([original_chunk])
+    store.add([updated_chunk])
+
+    assert store.count() == 1
+    assert store.get("shared-chunk-id") == updated_chunk
+
+
+def test_vector_store_deletes_chunks() -> None:
+    """Vector store should delete chunks by identifier."""
+    store = InMemoryVectorStore(HashEmbeddingProvider())
+
+    first_chunk = create_chunk(
+        "First chunk.",
+        0,
+        chunk_id="chunk-1",
+    )
+    second_chunk = create_chunk(
+        "Second chunk.",
+        1,
+        chunk_id="chunk-2",
+    )
+
+    store.add([first_chunk, second_chunk])
+
+    deleted_count = store.delete(["chunk-1"])
+
+    assert deleted_count == 1
+    assert store.count() == 1
+    assert store.get("chunk-1") is None
+    assert store.get("chunk-2") == second_chunk
+
+
+def test_vector_store_clears_all_chunks() -> None:
+    """Vector store should remove every stored chunk."""
+    store = InMemoryVectorStore(HashEmbeddingProvider())
+
+    store.add(
+        [
+            create_chunk("First chunk.", 0),
+            create_chunk("Second chunk.", 1),
+        ]
+    )
+
+    store.clear()
+
+    assert store.count() == 0
+
+
+@pytest.mark.parametrize(
+    ("query", "top_k", "expected_message"),
+    [
+        ("", 5, "Search query must not be empty."),
+        ("   ", 5, "Search query must not be empty."),
+        ("maintenance", 0, "top_k must be greater than zero."),
+        ("maintenance", -1, "top_k must be greater than zero."),
+    ],
+)
+def test_vector_store_rejects_invalid_search_parameters(
+    query: str,
+    top_k: int,
+    expected_message: str,
+) -> None:
+    """Search should reject invalid query parameters."""
+    store = InMemoryVectorStore(HashEmbeddingProvider())
+
+    with pytest.raises(ValueError, match=expected_message):
+        store.search(query, top_k=top_k)
+
+## Run 
+
+uv run pytest tests\test_vector_store.py -v
+
+## uv run ruff format .
+## uv run ruff check .
+## uv run mypy src
+## uv run pytest -v
+
+Project Progress
+
+You have completed:
+
+✅ Step 1–9: Core shared infrastructure
+✅ Step 10: Shared RAG Package
+✅ Step 10.3: Text Chunking Engine
+✅ Step 11: Shared Vector Store Layer
+
+Total test suite: 98 passing tests.
+
+## Step 12 — Build the Shared RAG Retrieval Service
+
+## This layer will combine everything built into a single reusable service:
+
+## Create the new service and test files:
+
+New-Item -ItemType File -Force `
+    src\full_stack_ai_shared\rag\service.py, `
+    tests\test_rag_service.py
+
+Files that will be created or updated:
+
+## code src\full_stack_ai_shared\rag\service.py
+
+"""High-level retrieval-augmented generation service."""
+
+from collections.abc import Mapping
+from typing import Any
+
+from full_stack_ai_shared.rag.chunking import TextChunker
+from full_stack_ai_shared.rag.models import (
+    Document,
+    DocumentChunk,
+    SearchResult,
+)
+from full_stack_ai_shared.rag.vector_store import InMemoryVectorStore
+
+
+class RAGService:
+    """Coordinate document chunking, storage, and semantic retrieval."""
+
+    def __init__(
+        self,
+        *,
+        chunker: TextChunker,
+        vector_store: InMemoryVectorStore,
+    ) -> None:
+        """Initialize the retrieval service."""
+        self._chunker = chunker
+        self._vector_store = vector_store
+        self._document_chunks: dict[str, set[str]] = {}
+
+    @property
+    def chunker(self) -> TextChunker:
+        """Return the configured text chunker."""
+        return self._chunker
+
+    @property
+    def vector_store(self) -> InMemoryVectorStore:
+        """Return the configured vector store."""
+        return self._vector_store
+
+    def ingest(self, document: Document) -> list[DocumentChunk]:
+        """Chunk and index a document."""
+        chunks = self._chunker.chunk(document)
+        self._vector_store.add(chunks)
+
+        previous_chunk_ids = self._document_chunks.get(document.document_id, set())
+        current_chunk_ids = {chunk.chunk_id for chunk in chunks}
+
+        stale_chunk_ids = previous_chunk_ids - current_chunk_ids
+        if stale_chunk_ids:
+            self._vector_store.delete(list(stale_chunk_ids))
+
+        self._document_chunks[document.document_id] = current_chunk_ids
+
+        return chunks
+
+    def retrieve(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        metadata_filter: Mapping[str, Any] | None = None,
+    ) -> list[SearchResult]:
+        """Retrieve document chunks that are most relevant to a query."""
+        if not query.strip():
+            raise ValueError("Search query must not be empty.")
+
+        if top_k <= 0:
+            raise ValueError("top_k must be greater than zero.")
+
+        return self._vector_store.search(
+            query,
+            top_k=top_k,
+            metadata_filter=metadata_filter,
+        )
+
+    def get_chunk(self, chunk_id: str) -> DocumentChunk | None:
+        """Return a stored document chunk by its identifier."""
+        if not chunk_id.strip():
+            raise ValueError("Chunk ID must not be empty.")
+
+        return self._vector_store.get(chunk_id)
+
+    def delete_document(self, document_id: str) -> int:
+        """Delete all chunks associated with a source document."""
+        if not document_id.strip():
+            raise ValueError("Document ID must not be empty.")
+
+        chunk_ids = self._document_chunks.pop(document_id, set())
+
+        if not chunk_ids:
+            return 0
+
+        self._vector_store.delete(list(chunk_ids))
+
+        return len(chunk_ids)
+
+    def clear(self) -> None:
+        """Remove every indexed chunk from the service."""
+        self._vector_store.clear()
+        self._document_chunks.clear()
+
+## Update public API:
+
+## code src\full_stack_ai_shared\rag\__init__.py
+
+"""Shared retrieval-augmented generation abstractions."""
+
+from full_stack_ai_shared.rag.chunking import TextChunker
+from full_stack_ai_shared.rag.embeddings import (
+    EmbeddingProvider,
+    HashEmbeddingProvider,
+)
+from full_stack_ai_shared.rag.models import (
+    Document,
+    DocumentChunk,
+    SearchResult,
+)
+from full_stack_ai_shared.rag.service import RAGService
+from full_stack_ai_shared.rag.vector_store import InMemoryVectorStore
+
+__all__ = [
+    "Document",
+    "DocumentChunk",
+    "EmbeddingProvider",
+    "HashEmbeddingProvider",
+    "InMemoryVectorStore",
+    "RAGService",
+    "SearchResult",
+    "TextChunker",
+]
+
+## code tests\test_rag_service.py
+
+"""Tests for the high-level RAG retrieval service."""
+
+import pytest
+
+from full_stack_ai_shared.rag import (
+    Document,
+    HashEmbeddingProvider,
+    InMemoryVectorStore,
+    RAGService,
+    TextChunker,
+)
+
+
+def create_rag_service(
+    *,
+    chunk_size: int = 100,
+    overlap: int = 20,
+) -> RAGService:
+    """Create a RAG service configured for testing."""
+    embedding_provider = HashEmbeddingProvider(dimensions=32)
+
+    vector_store = InMemoryVectorStore(
+        embedding_provider=embedding_provider,
+    )
+
+    chunker = TextChunker(
+        chunk_size=chunk_size,
+        overlap=overlap,
+    )
+
+    return RAGService(
+        chunker=chunker,
+        vector_store=vector_store,
+    )
+
+
+def test_rag_service_exposes_configured_components() -> None:
+    """RAGService should expose its chunker and vector store."""
+    chunker = TextChunker(
+        chunk_size=100,
+        overlap=20,
+    )
+
+    vector_store = InMemoryVectorStore(
+        embedding_provider=HashEmbeddingProvider(dimensions=32),
+    )
+
+    service = RAGService(
+        chunker=chunker,
+        vector_store=vector_store,
+    )
+
+    assert service.chunker is chunker
+    assert service.vector_store is vector_store
+
+
+def test_rag_service_ingests_document() -> None:
+    """Ingesting a document should chunk and index its content."""
+    service = create_rag_service()
+
+    document = Document(
+        content="Compressor maintenance requires regular vibration monitoring.",
+        metadata={
+            "asset_type": "compressor",
+            "department": "maintenance",
+        },
+    )
+
+    chunks = service.ingest(document)
+
+    assert len(chunks) == 1
+    assert chunks[0].document_id == document.document_id
+    assert chunks[0].content == document.content
+    assert chunks[0].metadata["asset_type"] == "compressor"
+    assert chunks[0].metadata["department"] == "maintenance"
+    assert chunks[0].metadata["chunk_index"] == 0
+    assert chunks[0].metadata["start_char"] == 0
+    assert chunks[0].metadata["end_char"] == len(document.content)
+
+    stored_chunk = service.get_chunk(chunks[0].chunk_id)
+
+    assert stored_chunk == chunks[0]
+
+
+def test_rag_service_ingests_multiple_chunks() -> None:
+    """Long documents should be split and indexed as multiple chunks."""
+    service = create_rag_service(
+        chunk_size=40,
+        overlap=10,
+    )
+
+    document = Document(
+        content=(
+            "Industrial compressors require vibration monitoring, "
+            "temperature analysis, pressure inspection, and scheduled "
+            "preventive maintenance."
+        ),
+    )
+
+    chunks = service.ingest(document)
+
+    assert len(chunks) > 1
+
+    for chunk in chunks:
+        assert service.get_chunk(chunk.chunk_id) == chunk
+
+
+def test_rag_service_retrieves_relevant_chunks() -> None:
+    """The service should return chunks relevant to a search query."""
+    service = create_rag_service()
+
+    compressor_document = Document(
+        content=(
+            "Compressor maintenance includes vibration analysis "
+            "and bearing inspection."
+        ),
+        metadata={"asset_type": "compressor"},
+    )
+
+    pump_document = Document(
+        content=(
+            "Centrifugal pump maintenance includes seal replacement "
+            "and flow inspection."
+        ),
+        metadata={"asset_type": "pump"},
+    )
+
+    service.ingest(compressor_document)
+    service.ingest(pump_document)
+
+    results = service.retrieve(
+        "compressor vibration maintenance",
+        top_k=1,
+    )
+
+    assert len(results) == 1
+    assert results[0].chunk.document_id == compressor_document.document_id
+    assert results[0].chunk.metadata["asset_type"] == "compressor"
+
+
+def test_rag_service_limits_retrieval_results() -> None:
+    """Retrieval should respect the requested result limit."""
+    service = create_rag_service()
+
+    documents = [
+        Document(content="Compressor maintenance and vibration monitoring."),
+        Document(content="Pump maintenance and seal inspection."),
+        Document(content="Motor maintenance and temperature monitoring."),
+    ]
+
+    for document in documents:
+        service.ingest(document)
+
+    results = service.retrieve(
+        "maintenance monitoring",
+        top_k=2,
+    )
+
+    assert len(results) == 2
+
+
+def test_rag_service_filters_retrieval_by_metadata() -> None:
+    """Retrieval should support metadata filtering."""
+    service = create_rag_service()
+
+    compressor_document = Document(
+        content="Inspect compressor vibration and bearing temperature.",
+        metadata={
+            "asset_type": "compressor",
+            "site": "los-angeles",
+        },
+    )
+
+    pump_document = Document(
+        content="Inspect pump vibration and bearing temperature.",
+        metadata={
+            "asset_type": "pump",
+            "site": "los-angeles",
+        },
+    )
+
+    service.ingest(compressor_document)
+    service.ingest(pump_document)
+
+    results = service.retrieve(
+        "bearing vibration inspection",
+        top_k=5,
+        metadata_filter={"asset_type": "pump"},
+    )
+
+    assert len(results) == 1
+    assert results[0].chunk.document_id == pump_document.document_id
+    assert results[0].chunk.metadata["asset_type"] == "pump"
+
+
+def test_rag_service_returns_chunk_by_id() -> None:
+    """A stored chunk should be retrievable by its identifier."""
+    service = create_rag_service()
+
+    document = Document(
+        content="Enterprise asset-health documentation.",
+    )
+
+    chunks = service.ingest(document)
+
+    stored_chunk = service.get_chunk(chunks[0].chunk_id)
+
+    assert stored_chunk == chunks[0]
+
+
+def test_rag_service_returns_none_for_unknown_chunk() -> None:
+    """An unknown chunk identifier should return None."""
+    service = create_rag_service()
+
+    assert service.get_chunk("unknown-chunk-id") is None
+
+
+def test_rag_service_deletes_document_chunks() -> None:
+    """Deleting a document should remove all of its stored chunks."""
+    service = create_rag_service(
+        chunk_size=40,
+        overlap=10,
+    )
+
+    document = Document(
+        content=(
+            "Compressor vibration monitoring identifies bearing wear. "
+            "Temperature monitoring identifies lubrication problems."
+        ),
+    )
+
+    chunks = service.ingest(document)
+
+    deleted_count = service.delete_document(document.document_id)
+
+    assert deleted_count == len(chunks)
+
+    for chunk in chunks:
+        assert service.get_chunk(chunk.chunk_id) is None
+
+
+def test_rag_service_delete_document_preserves_other_documents() -> None:
+    """Deleting one document should not remove unrelated chunks."""
+    service = create_rag_service()
+
+    first_document = Document(
+        content="Compressor vibration monitoring procedures.",
+    )
+
+    second_document = Document(
+        content="Pump seal inspection procedures.",
+    )
+
+    first_chunks = service.ingest(first_document)
+    second_chunks = service.ingest(second_document)
+
+    deleted_count = service.delete_document(first_document.document_id)
+
+    assert deleted_count == len(first_chunks)
+    assert service.get_chunk(first_chunks[0].chunk_id) is None
+    assert service.get_chunk(second_chunks[0].chunk_id) == second_chunks[0]
+
+
+def test_rag_service_delete_unknown_document_returns_zero() -> None:
+    """Deleting an unknown document should report no deleted chunks."""
+    service = create_rag_service()
+
+    deleted_count = service.delete_document("unknown-document-id")
+
+    assert deleted_count == 0
+
+
+def test_rag_service_reingests_existing_document() -> None:
+    """Reingesting a document should replace its previous chunks."""
+    service = create_rag_service(
+        chunk_size=50,
+        overlap=10,
+    )
+
+    original_document = Document(
+        document_id="maintenance-document",
+        content=(
+            "Original compressor maintenance instructions "
+            "for vibration inspection."
+        ),
+    )
+
+    original_chunks = service.ingest(original_document)
+
+    updated_document = Document(
+        document_id="maintenance-document",
+        content=(
+            "Updated compressor maintenance instructions "
+            "for temperature monitoring."
+        ),
+    )
+
+    updated_chunks = service.ingest(updated_document)
+
+    for chunk in original_chunks:
+        assert service.get_chunk(chunk.chunk_id) is None
+
+    for chunk in updated_chunks:
+        assert service.get_chunk(chunk.chunk_id) == chunk
+
+
+def test_rag_service_clear_removes_all_chunks() -> None:
+    """Clearing the service should remove every indexed chunk."""
+    service = create_rag_service()
+
+    first_chunks = service.ingest(
+        Document(content="Compressor maintenance documentation.")
+    )
+
+    second_chunks = service.ingest(
+        Document(content="Pump maintenance documentation.")
+    )
+
+    service.clear()
+
+    for chunk in first_chunks + second_chunks:
+        assert service.get_chunk(chunk.chunk_id) is None
+
+
+@pytest.mark.parametrize(
+    ("query", "error_message"),
+    [
+        ("", "Search query must not be empty."),
+        ("   ", "Search query must not be empty."),
+    ],
+)
+def test_rag_service_rejects_empty_query(
+    query: str,
+    error_message: str,
+) -> None:
+    """Retrieval should reject empty search queries."""
+    service = create_rag_service()
+
+    with pytest.raises(ValueError, match=error_message):
+        service.retrieve(query)
+
+
+@pytest.mark.parametrize("top_k", [0, -1])
+def test_rag_service_rejects_invalid_top_k(top_k: int) -> None:
+    """Retrieval should reject non-positive result limits."""
+    service = create_rag_service()
+
+    with pytest.raises(
+        ValueError,
+        match="top_k must be greater than zero.",
+    ):
+        service.retrieve(
+            "compressor maintenance",
+            top_k=top_k,
+        )
+
+
+@pytest.mark.parametrize(
+    ("chunk_id", "error_message"),
+    [
+        ("", "Chunk ID must not be empty."),
+        ("   ", "Chunk ID must not be empty."),
+    ],
+)
+def test_rag_service_rejects_empty_chunk_id(
+    chunk_id: str,
+    error_message: str,
+) -> None:
+    """Chunk lookup should reject empty identifiers."""
+    service = create_rag_service()
+
+    with pytest.raises(ValueError, match=error_message):
+        service.get_chunk(chunk_id)
+
+
+@pytest.mark.parametrize(
+    ("document_id", "error_message"),
+    [
+        ("", "Document ID must not be empty."),
+        ("   ", "Document ID must not be empty."),
+    ],
+)
+def test_rag_service_rejects_empty_document_id(
+    document_id: str,
+    error_message: str,
+) -> None:
+    """Document deletion should reject empty identifiers."""
+    service = create_rag_service()
+
+    with pytest.raises(ValueError, match=error_message):
+        service.delete_document(document_id)
+
+
+## rUN
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest tests\test_rag_service.py -v
+
+
+## RAG package:
+
+src/full_stack_ai_shared/rag/
+├── __init__.py
+├── chunking.py
+├── embeddings.py
+├── models.py
+├── service.py
+└── vector_store.py
+
+## Tests:
+
+tests/
+├── test_rag.py
+├── test_rag_service.py
+└── test_vector_store.py
+
+## Step 12.4 — Validate the Complete Shared RAG Package
+
+## Run the complete RAG test suite:
+
+## uv run pytest tests\test_rag.py tests\test_vector_store.py tests\test_ra
+
+## Run
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Step 13 — Shared RAG Generation Pipeline:
+
+## Create these files
+
+New-Item -ItemType File -Force `
+    src\full_stack_ai_shared\rag\generation.py, `
+    tests\test_rag_generation.py
+
+## Step 13.2 — Implement generation.py
+
+## 
+"""Shared retrieval-augmented generation service."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from typing import Any
+
+from full_stack_ai_shared.rag.models import SearchResult
+from full_stack_ai_shared.rag.service import RAGService
+
+
+@dataclass(slots=True)
+class RAGRequest:
+    """Represent a retrieval-augmented generation request."""
+
+    query: str
+    top_k: int = 5
+    metadata_filter: Mapping[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        """Validate the request."""
+        if not self.query.strip():
+            raise ValueError("Query must not be empty.")
+
+        if self.top_k <= 0:
+            raise ValueError("top_k must be greater than zero.")
+
+
+@dataclass(slots=True)
+class RAGResponse:
+    """Represent the response returned by the RAG generation service."""
+
+    answer: str
+    search_results: list[SearchResult] = field(default_factory=list)
+    sources: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class RAGGenerationService:
+    """Generate answers from retrieved document context."""
+
+    def __init__(self, rag_service: RAGService) -> None:
+        """Initialize the generation service."""
+        self._rag_service = rag_service
+
+    @property
+    def rag_service(self) -> RAGService:
+        """Return the configured retrieval service."""
+        return self._rag_service
+
+    def generate(self, request: RAGRequest) -> RAGResponse:
+        """Generate an answer using retrieved document chunks."""
+        search_results = self._rag_service.retrieve(
+            request.query,
+            top_k=request.top_k,
+            metadata_filter=request.metadata_filter,
+        )
+
+        if not search_results:
+            return RAGResponse(
+                answer="No relevant information found.",
+                search_results=[],
+                sources=[],
+            )
+
+        context = "\n\n".join(
+            result.chunk.content for result in search_results
+        )
+
+        answer = (
+            "Generated answer based on retrieved context:\n\n"
+            f"{context}"
+        )
+
+        sources = list(
+            {
+                result.chunk.document_id
+                for result in search_results
+            }
+        )
+
+        return RAGResponse(
+            answer=answer,
+            search_results=search_results,
+            sources=sources,
+            metadata={
+                "retrieved_chunks": len(search_results),
+            },
+        
+## code src\full_stack_ai_shared\rag\__init__.py
+
+"""Shared retrieval-augmented generation abstractions."""
+
+from full_stack_ai_shared.rag.chunking import TextChunker
+from full_stack_ai_shared.rag.embeddings import (
+    EmbeddingProvider,
+    HashEmbeddingProvider,
+)
+from full_stack_ai_shared.rag.generation import (
+    RAGGenerationService,
+    RAGRequest,
+    RAGResponse,
+)
+from full_stack_ai_shared.rag.models import (
+    Document,
+    DocumentChunk,
+    SearchResult,
+)
+from full_stack_ai_shared.rag.service import RAGService
+from full_stack_ai_shared.rag.vector_store import InMemoryVectorStore
+
+__all__ = [
+    "Document",
+    "DocumentChunk",
+    "EmbeddingProvider",
+    "HashEmbeddingProvider",
+    "InMemoryVectorStore",
+    "RAGGenerationService",
+    "RAGRequest",
+    "RAGResponse",
+    "RAGService",
+    "SearchResult",
+    "TextChunker",
+]
+
+## code tests\test_rag_generation.py
+
+"""Tests for the shared RAG generation service."""
+
+import pytest
+
+from full_stack_ai_shared.rag import (
+    Document,
+    HashEmbeddingProvider,
+    InMemoryVectorStore,
+    RAGGenerationService,
+    RAGRequest,
+    RAGResponse,
+    RAGService,
+    TextChunker,
+)
+
+
+def create_generation_service() -> RAGGenerationService:
+    """Create a RAG generation service configured for testing."""
+    embedding_provider = HashEmbeddingProvider(dimensions=32)
+
+    vector_store = InMemoryVectorStore(
+        embedding_provider=embedding_provider,
+    )
+
+    rag_service = RAGService(
+        chunker=TextChunker(
+            chunk_size=100,
+            overlap=20,
+        ),
+        vector_store=vector_store,
+    )
+
+    return RAGGenerationService(rag_service=rag_service)
+
+
+def test_rag_request_defaults() -> None:
+    """RAGRequest should provide default retrieval settings."""
+    request = RAGRequest(
+        query="How should compressor bearings be maintained?"
+    )
+
+    assert request.query == "How should compressor bearings be maintained?"
+    assert request.top_k == 5
+    assert request.metadata_filter is None
+
+
+def test_rag_request_accepts_custom_values() -> None:
+    """RAGRequest should accept custom retrieval settings."""
+    request = RAGRequest(
+        query="How should pump seals be inspected?",
+        top_k=3,
+        metadata_filter={"asset_type": "pump"},
+    )
+
+    assert request.query == "How should pump seals be inspected?"
+    assert request.top_k == 3
+    assert request.metadata_filter == {"asset_type": "pump"}
+
+
+@pytest.mark.parametrize("query", ["", "   "])
+def test_rag_request_rejects_empty_query(query: str) -> None:
+    """RAGRequest should reject empty queries."""
+    with pytest.raises(
+        ValueError,
+        match="Query must not be empty.",
+    ):
+        RAGRequest(query=query)
+
+
+@pytest.mark.parametrize("top_k", [0, -1])
+def test_rag_request_rejects_invalid_top_k(top_k: int) -> None:
+    """RAGRequest should reject non-positive result limits."""
+    with pytest.raises(
+        ValueError,
+        match="top_k must be greater than zero.",
+    ):
+        RAGRequest(
+            query="Compressor maintenance",
+            top_k=top_k,
+        )
+
+
+def test_rag_response_defaults() -> None:
+    """RAGResponse should provide empty result collections by default."""
+    response = RAGResponse(
+        answer="Generated maintenance answer.",
+    )
+
+    assert response.answer == "Generated maintenance answer."
+    assert response.search_results == []
+    assert response.sources == []
+    assert response.metadata == {}
+
+
+def test_generation_service_exposes_rag_service() -> None:
+    """The generation service should expose its retrieval service."""
+    generation_service = create_generation_service()
+
+    assert isinstance(generation_service.rag_service, RAGService)
+
+
+def test_generation_service_returns_no_information_response() -> None:
+    """Generation should return a fallback when no chunks are available."""
+    generation_service = create_generation_service()
+
+    response = generation_service.generate(
+        RAGRequest(
+            query="How should compressor bearings be maintained?",
+        )
+    )
+
+    assert response.answer == "No relevant information found."
+    assert response.search_results == []
+    assert response.sources == []
+    assert response.metadata == {}
+
+
+def test_generation_service_generates_answer_from_retrieved_context() -> None:
+    """Generation should build an answer from retrieved chunks."""
+    generation_service = create_generation_service()
+
+    document = Document(
+        content=(
+            "Compressor bearings should be inspected for vibration, "
+            "temperature, and lubrication condition."
+        ),
+        metadata={
+            "asset_type": "compressor",
+            "source": "maintenance-manual",
+        },
+    )
+
+    generation_service.rag_service.ingest(document)
+
+    response = generation_service.generate(
+        RAGRequest(
+            query="How should compressor bearings be maintained?",
+            top_k=1,
+        )
+    )
+
+    assert isinstance(response, RAGResponse)
+    assert response.answer.startswith(
+        "Generated answer based on retrieved context:"
+    )
+    assert document.content in response.answer
+    assert len(response.search_results) == 1
+    assert response.search_results[0].chunk.document_id == document.document_id
+    assert response.sources == [document.document_id]
+    assert response.metadata == {"retrieved_chunks": 1}
+
+
+def test_generation_service_returns_unique_sources() -> None:
+    """Generation should return each source document only once."""
+    generation_service = create_generation_service()
+
+    document = Document(
+        content=(
+            "Compressor vibration should be monitored regularly. "
+            "Bearing temperature should also be checked frequently. "
+            "Lubrication condition should be inspected during maintenance."
+        ),
+    )
+
+    generation_service.rag_service.ingest(document)
+
+    response = generation_service.generate(
+        RAGRequest(
+            query="compressor bearing maintenance",
+            top_k=5,
+        )
+    )
+
+    assert response.sources == [document.document_id]
+
+
+def test_generation_service_filters_context_by_metadata() -> None:
+    """Generation should pass metadata filters to retrieval."""
+    generation_service = create_generation_service()
+
+    compressor_document = Document(
+        content="Inspect compressor bearings and vibration levels.",
+        metadata={"asset_type": "compressor"},
+    )
+
+    pump_document = Document(
+        content="Inspect pump seals and flow conditions.",
+        metadata={"asset_type": "pump"},
+    )
+
+    generation_service.rag_service.ingest(compressor_document)
+    generation_service.rag_service.ingest(pump_document)
+
+    response = generation_service.generate(
+        RAGRequest(
+            query="inspection procedures",
+            top_k=5,
+            metadata_filter={"asset_type": "pump"},
+        )
+    )
+
+    assert len(response.search_results) == 1
+    assert response.search_results[0].chunk.document_id == (
+        pump_document.document_id
+    )
+    assert response.sources == [pump_document.document_id]
+    assert pump_document.content in response.answer
+    assert compressor_document.content not in response.answer
+
+
+def test_generation_service_respects_top_k() -> None:
+    """Generation should limit the number of retrieved chunks."""
+    generation_service = create_generation_service()
+
+    documents = [
+        Document(content="Compressor maintenance documentation."),
+        Document(content="Pump maintenance documentation."),
+        Document(content="Motor maintenance documentation."),
+    ]
+
+    for document in documents:
+        generation_service.rag_service.ingest(document)
+
+    response = generation_service.generate(
+        RAGRequest(
+            query="maintenance documentation",
+            top_k=2,
+        )
+    )
+
+    assert len(response.search_results) == 2
+    assert response.metadata["retrieved_chunks"] == 2
+
+## Run
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest tests\test_rag_generation.py -v
+uv run pytest tests\test_rag.py tests\test_vector_store.py tests\test_rag_service.py tests\test_rag_generation.py -v
+
+# Built reusable infrastructure:
+
+✅ AI Agents
+✅ Authentication & Authorization
+✅ Configuration
+✅ Database
+✅ Logging
+✅ LLM abstraction
+✅ Complete RAG pipeline (retrieval + generation)
+
+## Step 14 — Shared AI Tool Framework:
+
+## Step 14.1 — Create the Tool Package Structure
+
+## Package folder
+
+New-Item -ItemType Directory -Force `
+    src\full_stack_ai_shared\tools | Out-Null
+
+## create source files
+
+$toolFiles = @(
+    "src\full_stack_ai_shared\tools\__init__.py",
+    "src\full_stack_ai_shared\tools\base.py",
+    "src\full_stack_ai_shared\tools\context.py",
+    "src\full_stack_ai_shared\tools\exceptions.py",
+    "src\full_stack_ai_shared\tools\function.py",
+    "src\full_stack_ai_shared\tools\models.py",
+    "src\full_stack_ai_shared\tools\registry.py"
+)
+
+foreach ($file in $toolFiles) {
+    New-Item -ItemType File -Force $file | Out-Null
+}
+
+## Create Test files
+
+$testFiles = @(
+    "tests\test_tool_models.py",
+    "tests\test_function_tool.py",
+    "tests\test_tool_registry.py"
+)
+
+foreach ($file in $testFiles) {
+    New-Item -ItemType File -Force $file | Out-Null
+}
+
+## Verify Structure
+
+Get-ChildItem src\full_stack_ai_shared\tools
+Get-ChildItem tests\test_tool*
+
+## Step 14.2 — Build the Tool Data Models
+
+## code src\full_stack_ai_shared\tools\models.py
+
+"""Data models for shared AI tool execution."""
+
+from dataclasses import dataclass, field
+from typing import Any
+from uuid import uuid4
+
+
+@dataclass(slots=True)
+class ToolDefinition:
+    """Describe a tool exposed to an AI agent."""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate the tool definition."""
+        if not self.name.strip():
+            raise ValueError("Tool name must not be empty.")
+
+        if not self.description.strip():
+            raise ValueError("Tool description must not be empty.")
+
+
+@dataclass(slots=True)
+class ToolRequest:
+    """Represent a request to execute a registered tool."""
+
+    tool_name: str
+    arguments: dict[str, Any] = field(default_factory=dict)
+    request_id: str = field(default_factory=lambda: str(uuid4()))
+
+    def __post_init__(self) -> None:
+        """Validate the tool request."""
+        if not self.tool_name.strip():
+            raise ValueError("Tool name must not be empty.")
+
+        if not self.request_id.strip():
+            raise ValueError("Request ID must not be empty.")
+
+
+@dataclass(slots=True)
+class ToolResult:
+    """Represent the result of a tool execution."""
+
+    tool_name: str
+    success: bool
+    output: Any = None
+    error: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    request_id: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate the tool result."""
+        if not self.tool_name.strip():
+            raise ValueError("Tool name must not be empty.")
+
+        if self.success and self.error is not None:
+            raise ValueError(
+                "Successful tool results must not contain an error."
+            )
+
+        if not self.success and not self.error:
+            raise ValueError(
+                "Failed tool results must contain an error message."
+            )
+
+## code tests\test_tool_models.py
+
+"""Tests for shared AI tool data models."""
+
+import pytest
+
+from full_stack_ai_shared.tools.models import (
+    ToolDefinition,
+    ToolRequest,
+    ToolResult,
+)
+
+
+def test_tool_definition_defaults() -> None:
+    """ToolDefinition should provide an empty input schema."""
+    definition = ToolDefinition(
+        name="asset_lookup",
+        description="Look up an industrial asset.",
+    )
+
+    assert definition.name == "asset_lookup"
+    assert definition.description == "Look up an industrial asset."
+    assert definition.input_schema == {}
+
+
+def test_tool_definition_rejects_empty_name() -> None:
+    """ToolDefinition should reject an empty name."""
+    with pytest.raises(ValueError, match="Tool name must not be empty"):
+        ToolDefinition(
+            name=" ",
+            description="Valid description.",
+        )
+
+
+def test_tool_definition_rejects_empty_description() -> None:
+    """ToolDefinition should reject an empty description."""
+    with pytest.raises(
+        ValueError,
+        match="Tool description must not be empty",
+    ):
+        ToolDefinition(
+            name="asset_lookup",
+            description=" ",
+        )
+
+
+def test_tool_request_defaults() -> None:
+    """ToolRequest should generate an identifier and empty arguments."""
+    request = ToolRequest(tool_name="asset_lookup")
+
+    assert request.tool_name == "asset_lookup"
+    assert request.arguments == {}
+    assert request.request_id
+
+
+def test_tool_request_accepts_arguments() -> None:
+    """ToolRequest should store tool arguments."""
+    request = ToolRequest(
+        tool_name="asset_lookup",
+        arguments={"asset_id": "PUMP-101"},
+    )
+
+    assert request.arguments == {"asset_id": "PUMP-101"}
+
+
+def test_tool_request_rejects_empty_tool_name() -> None:
+    """ToolRequest should reject an empty tool name."""
+    with pytest.raises(ValueError, match="Tool name must not be empty"):
+        ToolRequest(tool_name=" ")
+
+
+def test_successful_tool_result() -> None:
+    """ToolResult should store successful tool output."""
+    result = ToolResult(
+        tool_name="asset_lookup",
+        success=True,
+        output={"asset_id": "PUMP-101"},
+    )
+
+    assert result.tool_name == "asset_lookup"
+    assert result.success is True
+    assert result.output == {"asset_id": "PUMP-101"}
+    assert result.error is None
+    assert result.metadata == {}
+
+
+def test_failed_tool_result() -> None:
+    """ToolResult should store failure details."""
+    result = ToolResult(
+        tool_name="asset_lookup",
+        success=False,
+        error="Asset was not found.",
+    )
+
+    assert result.success is False
+    assert result.output is None
+    assert result.error == "Asset was not found."
+
+
+def test_successful_result_rejects_error() -> None:
+    """Successful results should not contain errors."""
+    with pytest.raises(
+        ValueError,
+        match="Successful tool results must not contain an error",
+    ):
+        ToolResult(
+            tool_name="asset_lookup",
+            success=True,
+            error="Unexpected error.",
+        )
+
+
+def test_failed_result_requires_error() -> None:
+    """Failed results should require an error message."""
+    with pytest.raises(
+        ValueError,
+        match="Failed tool results must contain an error message",
+    ):
+        ToolResult(
+            tool_name="asset_lookup",
+            success=False,
+        )
+
+## Run
+
+uv run ruff format src\full_stack_ai_shared\tools\models.py tests\test_tool_models.py
+uv run ruff check src\full_stack_ai_shared\tools\models.py tests\test_tool_models.py
+uv run mypy src
+uv run pytest tests\test_tool_models.py -v
+
+## Step 14.3 — Create Tool Exceptions
+
+code src\full_stack_ai_shared\tools\exceptions.py
+
+"""Exceptions raised by the shared AI tool framework."""
+
+
+class ToolError(Exception):
+    """Base exception for all shared tool framework errors."""
+
+
+class ToolNotFoundError(ToolError):
+    """Raised when a requested tool is not registered."""
+
+    def __init__(self, tool_name: str) -> None:
+        """Initialize the missing-tool error."""
+        super().__init__(f"Tool '{tool_name}' is not registered.")
+        self.tool_name = tool_name
+
+
+class ToolAlreadyRegisteredError(ToolError):
+    """Raised when a tool name is registered more than once."""
+
+    def __init__(self, tool_name: str) -> None:
+        """Initialize the duplicate-registration error."""
+        super().__init__(f"Tool '{tool_name}' is already registered.")
+        self.tool_name = tool_name
+
+
+class ToolExecutionError(ToolError):
+    """Raised when a tool fails during execution."""
+
+    def __init__(
+        self,
+        tool_name: str,
+        message: str,
+    ) -> None:
+        """Initialize the tool execution error."""
+        super().__init__(f"Tool '{tool_name}' execution failed: {message}")
+        self.tool_name = tool_name
+        self.message = message
+
+## code tests\test_tool_exceptions.py
+
+"""Tests for shared AI tool exceptions."""
+
+from full_stack_ai_shared.tools.exceptions import (
+    ToolAlreadyRegisteredError,
+    ToolError,
+    ToolExecutionError,
+    ToolNotFoundError,
+)
+
+
+def test_tool_not_found_error() -> None:
+    """ToolNotFoundError should include the missing tool name."""
+    error = ToolNotFoundError("asset_lookup")
+
+    assert isinstance(error, ToolError)
+    assert error.tool_name == "asset_lookup"
+    assert str(error) == "Tool 'asset_lookup' is not registered."
+
+
+def test_tool_already_registered_error() -> None:
+    """ToolAlreadyRegisteredError should include the duplicate tool name."""
+    error = ToolAlreadyRegisteredError("asset_lookup")
+
+    assert isinstance(error, ToolError)
+    assert error.tool_name == "asset_lookup"
+    assert str(error) == "Tool 'asset_lookup' is already registered."
+
+
+def test_tool_execution_error() -> None:
+    """ToolExecutionError should preserve execution failure details."""
+    error = ToolExecutionError(
+        tool_name="asset_lookup",
+        message="Database connection failed.",
+    )
+
+    assert isinstance(error, ToolError)
+    assert error.tool_name == "asset_lookup"
+    assert error.message == "Database connection failed."
+    assert (
+        str(error)
+        == "Tool 'asset_lookup' execution failed: Database connection failed."
+    )
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\tools\exceptions.py `
+    tests\test_tool_exceptions.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\tools\exceptions.py `
+    tests\test_tool_exceptions.py
+
+uv run mypy src
+uv run pytest tests\test_tool_exceptions.py -v
+
+## Step 14.4 — Build the Tool Execution Context
+
+"""Execution context for shared AI tools."""
+
+from dataclasses import dataclass, field
+from typing import Any
+from uuid import uuid4
+
+
+@dataclass(slots=True)
+class ToolContext:
+    """Provide shared execution data to an AI tool."""
+
+    execution_id: str = field(default_factory=lambda: str(uuid4()))
+    agent_name: str | None = None
+    user_id: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate the tool execution context."""
+        if not self.execution_id.strip():
+            raise ValueError("Execution ID must not be empty.")
+
+        if self.agent_name is not None and not self.agent_name.strip():
+            raise ValueError("Agent name must not be empty.")
+
+        if self.user_id is not None and not self.user_id.strip():
+            raise ValueError("User ID must not be empty.")
+
+    def get_metadata(
+        self,
+        key: str,
+        default: Any = None,
+    ) -> Any:
+        """Return a metadata value or the provided default."""
+        return self.metadata.get(key, default)
+
+    def set_metadata(
+        self,
+        key: str,
+        value: Any,
+    ) -> None:
+        """Add or update a metadata value."""
+        if not key.strip():
+            raise ValueError("Metadata key must not be empty.")
+
+        self.metadata[key] = value
+
+## code tests\test_tool_context.py
+
+"""Tests for shared AI tool execution context."""
+
+import pytest
+
+from full_stack_ai_shared.tools.context import ToolContext
+
+
+def test_tool_context_defaults() -> None:
+    """ToolContext should provide generated and empty default values."""
+    context = ToolContext()
+
+    assert context.execution_id
+    assert context.agent_name is None
+    assert context.user_id is None
+    assert context.metadata == {}
+
+
+def test_tool_context_accepts_execution_details() -> None:
+    """ToolContext should store agent, user, and metadata values."""
+    context = ToolContext(
+        execution_id="execution-123",
+        agent_name="maintenance-agent",
+        user_id="user-456",
+        metadata={"environment": "test"},
+    )
+
+    assert context.execution_id == "execution-123"
+    assert context.agent_name == "maintenance-agent"
+    assert context.user_id == "user-456"
+    assert context.metadata == {"environment": "test"}
+
+
+def test_tool_context_gets_metadata_value() -> None:
+    """ToolContext should return stored metadata."""
+    context = ToolContext(
+        metadata={"asset_id": "PUMP-101"},
+    )
+
+    assert context.get_metadata("asset_id") == "PUMP-101"
+
+
+def test_tool_context_returns_metadata_default() -> None:
+    """ToolContext should return a default for missing metadata."""
+    context = ToolContext()
+
+    assert context.get_metadata("asset_id", "UNKNOWN") == "UNKNOWN"
+
+
+def test_tool_context_sets_metadata_value() -> None:
+    """ToolContext should add and update metadata."""
+    context = ToolContext()
+
+    context.set_metadata("region", "west")
+    assert context.metadata == {"region": "west"}
+
+    context.set_metadata("region", "central")
+    assert context.metadata == {"region": "central"}
+
+
+def test_tool_context_rejects_empty_execution_id() -> None:
+    """ToolContext should reject an empty execution identifier."""
+    with pytest.raises(
+        ValueError,
+        match="Execution ID must not be empty",
+    ):
+        ToolContext(execution_id=" ")
+
+
+def test_tool_context_rejects_empty_agent_name() -> None:
+    """ToolContext should reject an empty provided agent name."""
+    with pytest.raises(
+        ValueError,
+        match="Agent name must not be empty",
+    ):
+        ToolContext(agent_name=" ")
+
+
+def test_tool_context_rejects_empty_user_id() -> None:
+    """ToolContext should reject an empty provided user identifier."""
+    with pytest.raises(
+        ValueError,
+        match="User ID must not be empty",
+    ):
+        ToolContext(user_id=" ")
+
+
+def test_tool_context_rejects_empty_metadata_key() -> None:
+    """ToolContext should reject an empty metadata key."""
+    context = ToolContext()
+
+    with pytest.raises(
+        ValueError,
+        match="Metadata key must not be empty",
+    ):
+        context.set_metadata(" ", "value")
+
+## New-Item -ItemType File -Force tests\test_tool_context.py | Out-Null
+code tests\test_tool_context.py
+
+"""Tests for shared AI tool execution context."""
+
+import pytest
+
+from full_stack_ai_shared.tools.context import ToolContext
+
+
+def test_tool_context_defaults() -> None:
+    """ToolContext should provide generated and empty default values."""
+    context = ToolContext()
+
+    assert context.execution_id
+    assert context.agent_name is None
+    assert context.user_id is None
+    assert context.metadata == {}
+
+
+def test_tool_context_accepts_execution_details() -> None:
+    """ToolContext should store agent, user, and metadata values."""
+    context = ToolContext(
+        execution_id="execution-123",
+        agent_name="maintenance-agent",
+        user_id="user-456",
+        metadata={"environment": "test"},
+    )
+
+    assert context.execution_id == "execution-123"
+    assert context.agent_name == "maintenance-agent"
+    assert context.user_id == "user-456"
+    assert context.metadata == {"environment": "test"}
+
+
+def test_tool_context_gets_metadata_value() -> None:
+    """ToolContext should return stored metadata."""
+    context = ToolContext(
+        metadata={"asset_id": "PUMP-101"},
+    )
+
+    assert context.get_metadata("asset_id") == "PUMP-101"
+
+
+def test_tool_context_returns_metadata_default() -> None:
+    """ToolContext should return a default for missing metadata."""
+    context = ToolContext()
+
+    assert context.get_metadata("asset_id", "UNKNOWN") == "UNKNOWN"
+
+
+def test_tool_context_sets_metadata_value() -> None:
+    """ToolContext should add and update metadata."""
+    context = ToolContext()
+
+    context.set_metadata("region", "west")
+    assert context.metadata == {"region": "west"}
+
+    context.set_metadata("region", "central")
+    assert context.metadata == {"region": "central"}
+
+
+def test_tool_context_rejects_empty_execution_id() -> None:
+    """ToolContext should reject an empty execution identifier."""
+    with pytest.raises(
+        ValueError,
+        match="Execution ID must not be empty",
+    ):
+        ToolContext(execution_id=" ")
+
+
+def test_tool_context_rejects_empty_agent_name() -> None:
+    """ToolContext should reject an empty provided agent name."""
+    with pytest.raises(
+        ValueError,
+        match="Agent name must not be empty",
+    ):
+        ToolContext(agent_name=" ")
+
+
+def test_tool_context_rejects_empty_user_id() -> None:
+    """ToolContext should reject an empty provided user identifier."""
+    with pytest.raises(
+        ValueError,
+        match="User ID must not be empty",
+    ):
+        ToolContext(user_id=" ")
+
+
+def test_tool_context_rejects_empty_metadata_key() -> None:
+    """ToolContext should reject an empty metadata key."""
+    context = ToolContext()
+
+    with pytest.raises(
+        ValueError,
+        match="Metadata key must not be empty",
+    ):
+        context.set_metadata(" ", "value")
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\tools\context.py `
+    tests\test_tool_context.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\tools\context.py `
+    tests\test_tool_context.py
+
+uv run mypy src
+uv run pytest tests\test_tool_context.py -v
+
+## Step 14.5 — Create the Abstract BaseTool
+
+## code src\full_stack_ai_shared\tools\base.py
+
+"""Abstract base classes for shared AI tools."""
+
+from abc import ABC, abstractmethod
+from typing import Any
+
+from full_stack_ai_shared.tools.context import ToolContext
+from full_stack_ai_shared.tools.models import ToolDefinition, ToolResult
+
+
+class BaseTool(ABC):
+    """Define the common interface implemented by all AI tools."""
+
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        input_schema: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize the tool definition."""
+        self._definition = ToolDefinition(
+            name=name,
+            description=description,
+            input_schema=input_schema or {},
+        )
+
+    @property
+    def name(self) -> str:
+        """Return the tool name."""
+        return self._definition.name
+
+    @property
+    def description(self) -> str:
+        """Return the tool description."""
+        return self._definition.description
+
+    @property
+    def input_schema(self) -> dict[str, Any]:
+        """Return a copy of the tool input schema."""
+        return dict(self._definition.input_schema)
+
+    @property
+    def definition(self) -> ToolDefinition:
+        """Return the tool definition."""
+        return ToolDefinition(
+            name=self._definition.name,
+            description=self._definition.description,
+            input_schema=dict(self._definition.input_schema),
+        )
+
+    @abstractmethod
+    async def execute(
+        self,
+        arguments: dict[str, Any],
+        context: ToolContext | None = None,
+    ) -> ToolResult:
+        """Execute the tool with validated arguments."""
+
+## New-Item -ItemType File -Force tests\test_base_tool.py | Out-Null
+code tests\test_base_tool.py
+
+"""Tests for the shared AI tool base class."""
+
+from typing import Any
+
+import pytest
+
+from full_stack_ai_shared.tools.base import BaseTool
+from full_stack_ai_shared.tools.context import ToolContext
+from full_stack_ai_shared.tools.models import ToolResult
+
+
+class EchoTool(BaseTool):
+    """Simple tool implementation used for testing."""
+
+    async def execute(
+        self,
+        arguments: dict[str, Any],
+        context: ToolContext | None = None,
+    ) -> ToolResult:
+        """Return the supplied arguments."""
+        return ToolResult(
+            tool_name=self.name,
+            success=True,
+            output=arguments,
+            metadata={
+                "execution_id": (
+                    context.execution_id if context is not None else None
+                ),
+            },
+        )
+
+
+def test_base_tool_properties() -> None:
+    """BaseTool should expose its configured definition."""
+    tool = EchoTool(
+        name="echo",
+        description="Return the supplied arguments.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "message": {"type": "string"},
+            },
+        },
+    )
+
+    assert tool.name == "echo"
+    assert tool.description == "Return the supplied arguments."
+    assert tool.input_schema == {
+        "type": "object",
+        "properties": {
+            "message": {"type": "string"},
+        },
+    }
+
+
+def test_base_tool_definition() -> None:
+    """BaseTool should return a complete tool definition."""
+    tool = EchoTool(
+        name="echo",
+        description="Return the supplied arguments.",
+    )
+
+    definition = tool.definition
+
+    assert definition.name == "echo"
+    assert definition.description == "Return the supplied arguments."
+    assert definition.input_schema == {}
+
+
+def test_base_tool_returns_schema_copy() -> None:
+    """Changing a returned schema should not change the tool."""
+    tool = EchoTool(
+        name="echo",
+        description="Return the supplied arguments.",
+        input_schema={"type": "object"},
+    )
+
+    schema = tool.input_schema
+    schema["type"] = "array"
+
+    assert tool.input_schema == {"type": "object"}
+
+
+@pytest.mark.asyncio
+async def test_base_tool_execution() -> None:
+    """Concrete tools should implement asynchronous execution."""
+    tool = EchoTool(
+        name="echo",
+        description="Return the supplied arguments.",
+    )
+    context = ToolContext(execution_id="execution-123")
+
+    result = await tool.execute(
+        arguments={"message": "hello"},
+        context=context,
+    )
+
+    assert result.success is True
+    assert result.tool_name == "echo"
+    assert result.output == {"message": "hello"}
+    assert result.metadata == {"execution_id": "execution-123"}
+
+
+def test_base_tool_cannot_be_instantiated() -> None:
+    """BaseTool should remain abstract."""
+    with pytest.raises(TypeError):
+        BaseTool(  # type: ignore[abstract]
+            name="invalid",
+            description="Invalid direct construction.",
+        )
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\tools\base.py `
+    tests\test_base_tool.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\tools\base.py `
+    tests\test_base_tool.py
+
+uv run mypy src
+
+uv run pytest tests\test_base_tool.py -v
+
+## Step 14.6 — Build FunctionTool
+
+## code src\full_stack_ai_shared\tools\function.py
+
+"""Function-backed implementation of the shared AI tool interface."""
+
+import inspect
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+from full_stack_ai_shared.tools.base import BaseTool
+from full_stack_ai_shared.tools.context import ToolContext
+from full_stack_ai_shared.tools.models import ToolResult
+
+ToolFunction = Callable[..., Any]
+AsyncToolFunction = Callable[..., Awaitable[Any]]
+
+
+class FunctionTool(BaseTool):
+    """Expose a synchronous or asynchronous Python function as an AI tool."""
+
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        function: ToolFunction | AsyncToolFunction,
+        input_schema: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize the function-backed tool."""
+        if not callable(function):
+            raise TypeError("Tool function must be callable.")
+
+        super().__init__(
+            name=name,
+            description=description,
+            input_schema=input_schema,
+        )
+        self._function = function
+
+    async def execute(
+        self,
+        arguments: dict[str, Any],
+        context: ToolContext | None = None,
+    ) -> ToolResult:
+        """Execute the wrapped function and return a standardized result."""
+        try:
+            output = self._function(**arguments)
+
+            if inspect.isawaitable(output):
+                output = await output
+
+            metadata: dict[str, Any] = {}
+
+            if context is not None:
+                metadata["execution_id"] = context.execution_id
+
+                if context.agent_name is not None:
+                    metadata["agent_name"] = context.agent_name
+
+                if context.user_id is not None:
+                    metadata["user_id"] = context.user_id
+
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                output=output,
+                metadata=metadata,
+            )
+        except Exception as error:
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error=str(error),
+                metadata={
+                    "error_type": type(error).__name__,
+                },
+            )
+      
+
+## code tests\test_function_tool.py
+
+"""Tests for function-backed shared AI tools."""
+
+from typing import Any
+
+import pytest
+
+from full_stack_ai_shared.tools.context import ToolContext
+from full_stack_ai_shared.tools.function import FunctionTool
+
+
+def add_numbers(first: int, second: int) -> int:
+    """Add two integers."""
+    return first + second
+
+
+async def multiply_numbers(first: int, second: int) -> int:
+    """Multiply two integers asynchronously."""
+    return first * second
+
+
+def raise_tool_error() -> None:
+    """Raise a predictable function error."""
+    raise RuntimeError("Simulated tool failure.")
+
+
+def return_asset(asset_id: str) -> dict[str, Any]:
+    """Return an industrial asset record."""
+    return {
+        "asset_id": asset_id,
+        "status": "operational",
+    }
+
+
+def test_function_tool_properties() -> None:
+    """FunctionTool should expose its configured tool details."""
+    tool = FunctionTool(
+        name="add_numbers",
+        description="Add two integer values.",
+        function=add_numbers,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "first": {"type": "integer"},
+                "second": {"type": "integer"},
+            },
+            "required": ["first", "second"],
+        },
+    )
+
+    assert tool.name == "add_numbers"
+    assert tool.description == "Add two integer values."
+    assert tool.input_schema["type"] == "object"
+
+
+def test_function_tool_rejects_non_callable() -> None:
+    """FunctionTool should reject a non-callable function value."""
+    with pytest.raises(
+        TypeError,
+        match="Tool function must be callable",
+    ):
+        FunctionTool(
+            name="invalid",
+            description="Invalid tool.",
+            function="not-callable",  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.asyncio
+async def test_function_tool_executes_sync_function() -> None:
+    """FunctionTool should execute synchronous Python functions."""
+    tool = FunctionTool(
+        name="add_numbers",
+        description="Add two integer values.",
+        function=add_numbers,
+    )
+
+    result = await tool.execute(
+        {
+            "first": 10,
+            "second": 15,
+        },
+    )
+
+    assert result.success is True
+    assert result.tool_name == "add_numbers"
+    assert result.output == 25
+    assert result.error is None
+
+
+@pytest.mark.asyncio
+async def test_function_tool_executes_async_function() -> None:
+    """FunctionTool should await asynchronous Python functions."""
+    tool = FunctionTool(
+        name="multiply_numbers",
+        description="Multiply two integer values.",
+        function=multiply_numbers,
+    )
+
+    result = await tool.execute(
+        {
+            "first": 6,
+            "second": 7,
+        },
+    )
+
+    assert result.success is True
+    assert result.output == 42
+
+
+@pytest.mark.asyncio
+async def test_function_tool_returns_complex_output() -> None:
+    """FunctionTool should preserve structured function output."""
+    tool = FunctionTool(
+        name="return_asset",
+        description="Return an industrial asset.",
+        function=return_asset,
+    )
+
+    result = await tool.execute(
+        {
+            "asset_id": "PUMP-101",
+        },
+    )
+
+    assert result.success is True
+    assert result.output == {
+        "asset_id": "PUMP-101",
+        "status": "operational",
+    }
+
+
+@pytest.mark.asyncio
+async def test_function_tool_adds_context_metadata() -> None:
+    """FunctionTool should include relevant execution context metadata."""
+    tool = FunctionTool(
+        name="add_numbers",
+        description="Add two integer values.",
+        function=add_numbers,
+    )
+    context = ToolContext(
+        execution_id="execution-123",
+        agent_name="calculation-agent",
+        user_id="user-456",
+    )
+
+    result = await tool.execute(
+        {
+            "first": 2,
+            "second": 3,
+        },
+        context=context,
+    )
+
+    assert result.success is True
+    assert result.metadata == {
+        "execution_id": "execution-123",
+        "agent_name": "calculation-agent",
+        "user_id": "user-456",
+    }
+
+
+@pytest.mark.asyncio
+async def test_function_tool_handles_function_failure() -> None:
+    """FunctionTool should return a failed result for function errors."""
+    tool = FunctionTool(
+        name="raise_tool_error",
+        description="Raise a predictable error.",
+        function=raise_tool_error,
+    )
+
+    result = await tool.execute({})
+
+    assert result.success is False
+    assert result.output is None
+    assert result.error == "Simulated tool failure."
+    assert result.metadata == {
+        "error_type": "RuntimeError",
+    }
+
+
+@pytest.mark.asyncio
+async def test_function_tool_handles_missing_argument() -> None:
+    """FunctionTool should return failure when arguments are missing."""
+    tool = FunctionTool(
+        name="add_numbers",
+        description="Add two integer values.",
+        function=add_numbers,
+    )
+
+    result = await tool.execute(
+        {
+            "first": 10,
+        },
+    )
+
+    assert result.success is False
+    assert result.error is not None
+    assert result.metadata["error_type"] == "TypeError"
+
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\tools\function.py `
+    tests\test_function_tool.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\tools\function.py `
+    tests\test_function_tool.py
+
+uv run mypy src
+
+uv run pytest tests\test_function_tool.py -v
+
+## Step 14.7 — Build the ToolRegistry
+
+## code src\full_stack_ai_shared\tools\registry.py
+
+"""Registry for discovering and executing shared AI tools."""
+
+from typing import Any
+
+from full_stack_ai_shared.tools.base import BaseTool
+from full_stack_ai_shared.tools.context import ToolContext
+from full_stack_ai_shared.tools.exceptions import (
+    ToolAlreadyRegisteredError,
+    ToolNotFoundError,
+)
+from full_stack_ai_shared.tools.models import ToolDefinition, ToolResult
+
+
+class ToolRegistry:
+    """Store, discover, and execute registered AI tools."""
+
+    def __init__(self) -> None:
+        """Initialize an empty tool registry."""
+        self._tools: dict[str, BaseTool] = {}
+
+    def register(
+        self,
+        tool: BaseTool,
+        *,
+        replace: bool = False,
+    ) -> None:
+        """Register a tool by its unique name."""
+        if tool.name in self._tools and not replace:
+            raise ToolAlreadyRegisteredError(tool.name)
+
+        self._tools[tool.name] = tool
+
+    def unregister(self, tool_name: str) -> BaseTool:
+        """Remove and return a registered tool."""
+        try:
+            return self._tools.pop(tool_name)
+        except KeyError as error:
+            raise ToolNotFoundError(tool_name) from error
+
+    def get(self, tool_name: str) -> BaseTool:
+        """Return a registered tool by name."""
+        try:
+            return self._tools[tool_name]
+        except KeyError as error:
+            raise ToolNotFoundError(tool_name) from error
+
+    def contains(self, tool_name: str) -> bool:
+        """Return whether a tool is registered."""
+        return tool_name in self._tools
+
+    def list_tools(self) -> list[ToolDefinition]:
+        """Return definitions for all registered tools."""
+        return [
+            self._tools[name].definition
+            for name in sorted(self._tools)
+        ]
+
+    async def execute(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any] | None = None,
+        context: ToolContext | None = None,
+    ) -> ToolResult:
+        """Execute a registered tool."""
+        tool = self.get(tool_name)
+
+        return await tool.execute(
+            arguments=arguments or {},
+            context=context,
+        )
+
+    def clear(self) -> None:
+        """Remove all registered tools."""
+        self._tools.clear()
+
+    def __len__(self) -> int:
+        """Return the number of registered tools."""
+        return len(self._tools)
+
+    def __contains__(self, tool_name: object) -> bool:
+        """Support membership checks using the `in` operator."""
+        if not isinstance(tool_name, str):
+            return False
+
+        return self.contains(tool_name)
+
+## code tests\test_tool_registry.py
+
+"""Tests for the shared AI tool registry."""
+
+import pytest
+
+from full_stack_ai_shared.tools.context import ToolContext
+from full_stack_ai_shared.tools.exceptions import (
+    ToolAlreadyRegisteredError,
+    ToolNotFoundError,
+)
+from full_stack_ai_shared.tools.function import FunctionTool
+from full_stack_ai_shared.tools.registry import ToolRegistry
+
+
+def add_numbers(first: int, second: int) -> int:
+    """Add two integers."""
+    return first + second
+
+
+def subtract_numbers(first: int, second: int) -> int:
+    """Subtract the second integer from the first."""
+    return first - second
+
+
+def create_add_tool() -> FunctionTool:
+    """Create a reusable addition tool."""
+    return FunctionTool(
+        name="add_numbers",
+        description="Add two integer values.",
+        function=add_numbers,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "first": {"type": "integer"},
+                "second": {"type": "integer"},
+            },
+            "required": ["first", "second"],
+        },
+    )
+
+
+def test_tool_registry_defaults() -> None:
+    """ToolRegistry should start empty."""
+    registry = ToolRegistry()
+
+    assert len(registry) == 0
+    assert registry.list_tools() == []
+
+
+def test_tool_registry_registers_tool() -> None:
+    """ToolRegistry should register a tool by name."""
+    registry = ToolRegistry()
+    tool = create_add_tool()
+
+    registry.register(tool)
+
+    assert len(registry) == 1
+    assert registry.contains("add_numbers") is True
+    assert "add_numbers" in registry
+    assert registry.get("add_numbers") is tool
+
+
+def test_tool_registry_rejects_duplicate_tool() -> None:
+    """ToolRegistry should reject duplicate names by default."""
+    registry = ToolRegistry()
+    registry.register(create_add_tool())
+
+    with pytest.raises(
+        ToolAlreadyRegisteredError,
+        match="Tool 'add_numbers' is already registered",
+    ):
+        registry.register(create_add_tool())
+
+
+def test_tool_registry_replaces_existing_tool() -> None:
+    """ToolRegistry should replace a tool when explicitly requested."""
+    registry = ToolRegistry()
+    original = create_add_tool()
+    replacement = FunctionTool(
+        name="add_numbers",
+        description="Subtract two integer values.",
+        function=subtract_numbers,
+    )
+
+    registry.register(original)
+    registry.register(replacement, replace=True)
+
+    assert len(registry) == 1
+    assert registry.get("add_numbers") is replacement
+
+
+def test_tool_registry_gets_missing_tool() -> None:
+    """ToolRegistry should raise when a requested tool is absent."""
+    registry = ToolRegistry()
+
+    with pytest.raises(
+        ToolNotFoundError,
+        match="Tool 'missing_tool' is not registered",
+    ):
+        registry.get("missing_tool")
+
+
+def test_tool_registry_unregisters_tool() -> None:
+    """ToolRegistry should remove and return a registered tool."""
+    registry = ToolRegistry()
+    tool = create_add_tool()
+    registry.register(tool)
+
+    removed_tool = registry.unregister("add_numbers")
+
+    assert removed_tool is tool
+    assert len(registry) == 0
+    assert "add_numbers" not in registry
+
+
+def test_tool_registry_unregisters_missing_tool() -> None:
+    """ToolRegistry should raise when removing an absent tool."""
+    registry = ToolRegistry()
+
+    with pytest.raises(
+        ToolNotFoundError,
+        match="Tool 'missing_tool' is not registered",
+    ):
+        registry.unregister("missing_tool")
+
+
+def test_tool_registry_lists_sorted_definitions() -> None:
+    """ToolRegistry should return sorted tool definitions."""
+    registry = ToolRegistry()
+    registry.register(
+        FunctionTool(
+            name="subtract_numbers",
+            description="Subtract two integer values.",
+            function=subtract_numbers,
+        ),
+    )
+    registry.register(create_add_tool())
+
+    definitions = registry.list_tools()
+
+    assert [definition.name for definition in definitions] == [
+        "add_numbers",
+        "subtract_numbers",
+    ]
+    assert definitions[0].description == "Add two integer values."
+    assert definitions[0].input_schema["type"] == "object"
+
+
+@pytest.mark.asyncio
+async def test_tool_registry_executes_tool() -> None:
+    """ToolRegistry should execute a registered tool."""
+    registry = ToolRegistry()
+    registry.register(create_add_tool())
+
+    result = await registry.execute(
+        "add_numbers",
+        {
+            "first": 20,
+            "second": 22,
+        },
+    )
+
+    assert result.success is True
+    assert result.tool_name == "add_numbers"
+    assert result.output == 42
+
+
+@pytest.mark.asyncio
+async def test_tool_registry_executes_with_context() -> None:
+    """ToolRegistry should pass execution context to the tool."""
+    registry = ToolRegistry()
+    registry.register(create_add_tool())
+    context = ToolContext(
+        execution_id="execution-123",
+        agent_name="math-agent",
+    )
+
+    result = await registry.execute(
+        "add_numbers",
+        {
+            "first": 2,
+            "second": 3,
+        },
+        context=context,
+    )
+
+    assert result.success is True
+    assert result.output == 5
+    assert result.metadata == {
+        "execution_id": "execution-123",
+        "agent_name": "math-agent",
+    }
+
+
+@pytest.mark.asyncio
+async def test_tool_registry_executes_with_default_arguments() -> None:
+    """ToolRegistry should use empty arguments when none are supplied."""
+
+    def return_status() -> str:
+        return "operational"
+
+    registry = ToolRegistry()
+    registry.register(
+        FunctionTool(
+            name="return_status",
+            description="Return the current status.",
+            function=return_status,
+        ),
+    )
+
+    result = await registry.execute("return_status")
+
+    assert result.success is True
+    assert result.output == "operational"
+
+
+@pytest.mark.asyncio
+async def test_tool_registry_executes_missing_tool() -> None:
+    """ToolRegistry should raise when executing an absent tool."""
+    registry = ToolRegistry()
+
+    with pytest.raises(
+        ToolNotFoundError,
+        match="Tool 'missing_tool' is not registered",
+    ):
+        await registry.execute("missing_tool")
+
+
+def test_tool_registry_clears_tools() -> None:
+    """ToolRegistry should remove all registered tools."""
+    registry = ToolRegistry()
+    registry.register(create_add_tool())
+    registry.register(
+        FunctionTool(
+            name="subtract_numbers",
+            description="Subtract two integer values.",
+            function=subtract_numbers,
+        ),
+    )
+
+    registry.clear()
+
+    assert len(registry) == 0
+    assert registry.list_tools() == []
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\tools\registry.py `
+    tests\test_tool_registry.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\tools\registry.py `
+    tests\test_tool_registry.py
+
+uv run mypy src
+
+uv run pytest tests\test_tool_registry.py -v
+
+## Step 14.8 — Export the Complete Public API
+
+## code src\full_stack_ai_shared\tools\__init__.py
+
+"""Shared AI tool framework abstractions."""
+
+from full_stack_ai_shared.tools.base import BaseTool
+from full_stack_ai_shared.tools.context import ToolContext
+from full_stack_ai_shared.tools.exceptions import (
+    ToolAlreadyRegisteredError,
+    ToolError,
+    ToolExecutionError,
+    ToolNotFoundError,
+)
+from full_stack_ai_shared.tools.function import FunctionTool
+from full_stack_ai_shared.tools.models import (
+    ToolDefinition,
+    ToolRequest,
+    ToolResult,
+)
+from full_stack_ai_shared.tools.registry import ToolRegistry
+
+__all__ = [
+    "BaseTool",
+    "FunctionTool",
+    "ToolAlreadyRegisteredError",
+    "ToolContext",
+    "ToolDefinition",
+    "ToolError",
+    "ToolExecutionError",
+    "ToolNotFoundError",
+    "ToolRegistry",
+    "ToolRequest",
+    "ToolResult",
+]
+
+## New-Item -ItemType File -Force tests\test_tools_public_api.py | Out-Null
+code tests\test_tools_public_api.py
+
+"""Tests for the shared AI tool framework public API."""
+
+from full_stack_ai_shared.tools import (
+    BaseTool,
+    FunctionTool,
+    ToolAlreadyRegisteredError,
+    ToolContext,
+    ToolDefinition,
+    ToolError,
+    ToolExecutionError,
+    ToolNotFoundError,
+    ToolRegistry,
+    ToolRequest,
+    ToolResult,
+)
+
+
+def test_tools_public_api_exports_expected_types() -> None:
+    """The tools package should expose the complete public API."""
+    assert BaseTool.__name__ == "BaseTool"
+    assert FunctionTool.__name__ == "FunctionTool"
+    assert ToolAlreadyRegisteredError.__name__ == (
+        "ToolAlreadyRegisteredError"
+    )
+    assert ToolContext.__name__ == "ToolContext"
+    assert ToolDefinition.__name__ == "ToolDefinition"
+    assert ToolError.__name__ == "ToolError"
+    assert ToolExecutionError.__name__ == "ToolExecutionError"
+    assert ToolNotFoundError.__name__ == "ToolNotFoundError"
+    assert ToolRegistry.__name__ == "ToolRegistry"
+    assert ToolRequest.__name__ == "ToolRequest"
+    assert ToolResult.__name__ == "ToolResult"
+    
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\tools\__init__.py `
+    tests\test_tools_public_api.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\tools\__init__.py `
+    tests\test_tools_public_api.py
+
+uv run mypy src
+
+uv run pytest tests\test_tools_public_api.py -v
+
+uv run python -c "from full_stack_ai_shared.tools import BaseTool, FunctionTool, ToolContext, ToolRegistry, ToolRequest, ToolResult; print('Shared AI tool framework imports successfully.')"
+Shared AI tool framework imports successfully.
+
+## Step 14.9 — Run the Complete Tool Framework Test Suite:
+
+uv run pytest `
+    tests\test_tool_models.py `
+    tests\test_tool_exceptions.py `
+    tests\test_tool_context.py `
+    tests\test_base_tool.py `
+    tests\test_function_tool.py `
+    tests\test_tool_registry.py `
+    tests\test_tools_public_api.py `
+    -v
+
+## run the full project quality checks:
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## Step 14.10 — Add Request-Based Execution
+
+## code src\full_stack_ai_shared\tools\registry.py
+
+"""Registry for discovering and executing shared AI tools."""
+
+from typing import Any
+
+from full_stack_ai_shared.tools.base import BaseTool
+from full_stack_ai_shared.tools.context import ToolContext
+from full_stack_ai_shared.tools.exceptions import (
+    ToolAlreadyRegisteredError,
+    ToolNotFoundError,
+)
+from full_stack_ai_shared.tools.models import (
+    ToolDefinition,
+    ToolRequest,
+    ToolResult,
+)
+
+
+class ToolRegistry:
+    """Store, discover, and execute registered AI tools."""
+
+    def __init__(self) -> None:
+        """Initialize an empty tool registry."""
+        self._tools: dict[str, BaseTool] = {}
+
+    def register(
+        self,
+        tool: BaseTool,
+        *,
+        replace: bool = False,
+    ) -> None:
+        """Register a tool by its unique name."""
+        if tool.name in self._tools and not replace:
+            raise ToolAlreadyRegisteredError(tool.name)
+
+        self._tools[tool.name] = tool
+
+    def unregister(self, tool_name: str) -> BaseTool:
+        """Remove and return a registered tool."""
+        try:
+            return self._tools.pop(tool_name)
+        except KeyError as error:
+            raise ToolNotFoundError(tool_name) from error
+
+    def get(self, tool_name: str) -> BaseTool:
+        """Return a registered tool by name."""
+        try:
+            return self._tools[tool_name]
+        except KeyError as error:
+            raise ToolNotFoundError(tool_name) from error
+
+    def contains(self, tool_name: str) -> bool:
+        """Return whether a tool is registered."""
+        return tool_name in self._tools
+
+    def list_tools(self) -> list[ToolDefinition]:
+        """Return definitions for all registered tools."""
+        return [
+            self._tools[name].definition
+            for name in sorted(self._tools)
+        ]
+
+    async def execute(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any] | None = None,
+        context: ToolContext | None = None,
+    ) -> ToolResult:
+        """Execute a registered tool by name."""
+        request = ToolRequest(
+            tool_name=tool_name,
+            arguments=arguments or {},
+        )
+
+        return await self.execute_request(
+            request=request,
+            context=context,
+        )
+
+    async def execute_request(
+        self,
+        request: ToolRequest,
+        context: ToolContext | None = None,
+    ) -> ToolResult:
+        """Execute a complete tool request."""
+        tool = self.get(request.tool_name)
+
+        result = await tool.execute(
+            arguments=request.arguments,
+            context=context,
+        )
+
+        result.request_id = request.request_id
+        return result
+
+    def clear(self) -> None:
+        """Remove all registered tools."""
+        self._tools.clear()
+
+    def __len__(self) -> int:
+        """Return the number of registered tools."""
+        return len(self._tools)
+
+    def __contains__(self, tool_name: object) -> bool:
+        """Support membership checks using the `in` operator."""
+        if not isinstance(tool_name, str):
+            return False
+
+        return self.contains(tool_name)
+
+## code tests\test_tool_registry.py
+
+from full_stack_ai_shared.tools.models import ToolRequest
+
+@pytest.mark.asyncio
+async def test_tool_registry_executes_tool_request() -> None:
+    """ToolRegistry should execute a complete ToolRequest."""
+    registry = ToolRegistry()
+    registry.register(create_add_tool())
+
+    request = ToolRequest(
+        tool_name="add_numbers",
+        arguments={
+            "first": 19,
+            "second": 23,
+        },
+        request_id="request-123",
+    )
+
+    result = await registry.execute_request(request)
+
+    assert result.success is True
+    assert result.output == 42
+    assert result.request_id == "request-123"
+
+
+@pytest.mark.asyncio
+async def test_tool_registry_generated_request_id_is_preserved() -> None:
+    """Name-based execution should preserve its generated request ID."""
+    registry = ToolRegistry()
+    registry.register(create_add_tool())
+
+    result = await registry.execute(
+        "add_numbers",
+        {
+            "first": 10,
+            "second": 5,
+        },
+    )
+
+    assert result.success is True
+    assert result.output == 15
+    assert result.request_id is not None
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\tools\registry.py `
+    tests\test_tool_registry.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\tools\registry.py `
+    tests\test_tool_registry.py
+
+uv run mypy src
+
+uv run pytest tests\test_tool_registry.py -v
+
+## Run the full project
+
+uv run ruff format .
+uv run ruff check .
+uv run mypy src
+uv run pytest -v
+
+## tep 15 — Shared AI Agent Orchestration Framework
+
+## Step 15.1 — Create the Agent Execution Context
+
+## Create files
+
+New-Item -ItemType File -Force `
+    src\full_stack_ai_shared\agents\context.py | Out-Null
+
+New-Item -ItemType File -Force `
+    tests\test_agent_context.py | Out-Null
+
+## code src\full_stack_ai_shared\agents\context.py
+
+"""Execution context for shared AI-agent orchestration."""
+
+from dataclasses import dataclass, field
+from typing import Any
+from uuid import uuid4
+
+from full_stack_ai_shared.agents.memory import AgentMemory
+from full_stack_ai_shared.tools import ToolRegistry
+
+
+@dataclass(slots=True)
+class AgentExecutionContext:
+    """Provide shared services and metadata during agent execution."""
+
+    execution_id: str = field(default_factory=lambda: str(uuid4()))
+    tool_registry: ToolRegistry = field(default_factory=ToolRegistry)
+    memory: AgentMemory = field(default_factory=AgentMemory)
+    rag_service: Any | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate the agent execution context."""
+        if not self.execution_id.strip():
+            raise ValueError("Execution ID must not be empty.")
+
+    def get_metadata(
+        self,
+        key: str,
+        default: Any = None,
+    ) -> Any:
+        """Return a metadata value or the supplied default."""
+        return self.metadata.get(key, default)
+
+    def set_metadata(
+        self,
+        key: str,
+        value: Any,
+    ) -> None:
+        """Add or update execution metadata."""
+        if not key.strip():
+            raise ValueError("Metadata key must not be empty.")
+
+        self.metadata[key] = value
+
+## code tests\test_agent_context.py
+
+"""Tests for shared AI-agent execution context."""
+
+import pytest
+
+from full_stack_ai_shared.agents.context import AgentExecutionContext
+from full_stack_ai_shared.agents.memory import AgentMemory
+from full_stack_ai_shared.tools import ToolRegistry
+
+
+def test_agent_execution_context_defaults() -> None:
+    """Context should provide shared service defaults."""
+    context = AgentExecutionContext()
+
+    assert context.execution_id
+    assert isinstance(context.tool_registry, ToolRegistry)
+    assert isinstance(context.memory, AgentMemory)
+    assert context.rag_service is None
+    assert context.metadata == {}
+
+
+def test_agent_execution_context_accepts_services() -> None:
+    """Context should store supplied shared services."""
+    registry = ToolRegistry()
+    memory = AgentMemory()
+    rag_service = object()
+
+    context = AgentExecutionContext(
+        execution_id="execution-123",
+        tool_registry=registry,
+        memory=memory,
+        rag_service=rag_service,
+        metadata={"environment": "test"},
+    )
+
+    assert context.execution_id == "execution-123"
+    assert context.tool_registry is registry
+    assert context.memory is memory
+    assert context.rag_service is rag_service
+    assert context.metadata == {"environment": "test"}
+
+
+def test_agent_execution_context_gets_metadata() -> None:
+    """Context should return stored metadata."""
+    context = AgentExecutionContext(
+        metadata={"asset_id": "PUMP-101"},
+    )
+
+    assert context.get_metadata("asset_id") == "PUMP-101"
+
+
+def test_agent_execution_context_returns_metadata_default() -> None:
+    """Context should return the supplied default for missing metadata."""
+    context = AgentExecutionContext()
+
+    assert context.get_metadata("region", "unknown") == "unknown"
+
+
+def test_agent_execution_context_sets_metadata() -> None:
+    """Context should add and update metadata."""
+    context = AgentExecutionContext()
+
+    context.set_metadata("region", "west")
+    assert context.metadata == {"region": "west"}
+
+    context.set_metadata("region", "central")
+    assert context.metadata == {"region": "central"}
+
+
+def test_agent_execution_context_rejects_empty_execution_id() -> None:
+    """Context should reject an empty execution identifier."""
+    with pytest.raises(
+        ValueError,
+        match="Execution ID must not be empty",
+    ):
+        AgentExecutionContext(execution_id=" ")
+
+
+def test_agent_execution_context_rejects_empty_metadata_key() -> None:
+    """Context should reject an empty metadata key."""
+    context = AgentExecutionContext()
+
+    with pytest.raises(
+        ValueError,
+        match="Metadata key must not be empty",
+    ):
+        context.set_metadata(" ", "value")
