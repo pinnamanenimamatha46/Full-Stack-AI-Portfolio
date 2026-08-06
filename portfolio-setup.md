@@ -8588,3 +8588,23 @@ def test_agent_execution_context_rejects_empty_metadata_key() -> None:
         match="Metadata key must not be empty",
     ):
         context.set_metadata(" ", "value")
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\agents\context.py `
+    tests\test_agent_context.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\agents\context.py `
+    tests\test_agent_context.py
+
+uv run mypy src
+
+uv run pytest tests\test_agent_context.py -v
+
+git add .
+git commit -m "Add shared AI tool framework"
+git push origin main
+git status
+
