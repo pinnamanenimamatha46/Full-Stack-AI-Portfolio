@@ -1,5 +1,6 @@
 """Reusable application security utilities."""
 
+from full_stack_ai_shared.security.config import TokenSettings
 from full_stack_ai_shared.security.jwt import (
     JWTError,
     JWTExpiredError,
@@ -7,7 +8,6 @@ from full_stack_ai_shared.security.jwt import (
     create_access_token,
     decode_access_token,
 )
-from full_stack_ai_shared.security.settings import TokenSettings
 
 __all__ = [
     "JWTError",

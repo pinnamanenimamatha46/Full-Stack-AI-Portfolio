@@ -10423,4 +10423,1335 @@ __all__ = [
     "ToolResult",
 ]
 
-## 
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\tools\executor.py `
+    src\full_stack_ai_shared\tools\__init__.py `
+    tests\test_tool_executor.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\tools\executor.py `
+    src\full_stack_ai_shared\tools\__init__.py `
+    tests\test_tool_executor.py
+
+uv run mypy src
+
+ uv run pytest tests\test_tool_executor.py 
+
+uv run pytest `
+    tests\test_tool_context.py `
+    tests\test_tool_registry.py `
+    tests\test_tool_executor.py `
+    -v
+
+Run
+
+git status
+git add `
+shared-infrastructure/python/src/full_stack_ai_shared/tools/__init__.py `
+shared-infrastructure/python/src/full_stack_ai_shared/tools/context.py `
+shared-infrastructure/python/src/full_stack_ai_shared/tools/decorators.py `
+shared-infrastructure/python/src/full_stack_ai_shared/tools/exceptions.py `
+shared-infrastructure/python/src/full_stack_ai_shared/tools/executor.py `
+shared-infrastructure/python/tests/test_tool_context.py `
+shared-infrastructure/python/tests/test_tool_decorators.py `
+shared-infrastructure/python/tests/test_tool_exceptions.py `
+shared-infrastructure/python/tests/test_tool_executor.py
+
+git commit -m "Add shared AI agent orchestration and tool execution framework"
+git status
+
+## Step 16 — Shared AI Agent Planning Framework
+
+This layer will allow agents to convert a user request into structured, ordered execution steps before the orchestrator runs them.
+
+## Step 16.1 — Create the Agent Plan Models
+## From the parent project folder:
+
+## cd shared-infrastructure\python
+
+## Files
+
+New-Item -ItemType File -Force `
+    src\full_stack_ai_shared\agents\planning.py | Out-Null
+
+New-Item -ItemType File -Force `
+    tests\test_agent_planning.py | Out-Null
+
+## File 1 — code src\full_stack_ai_shared\agents\planning.py
+
+"""Planning models for shared AI-agent workflows."""
+
+from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import Any
+from uuid import uuid4
+
+
+class PlanStepStatus(StrEnum):
+    """Represent the execution status of an agent plan step."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+@dataclass(slots=True)
+class AgentPlanStep:
+    """Represent one executable step in an agent plan."""
+
+    description: str
+    step_id: str = field(default_factory=lambda: str(uuid4()))
+    tool_name: str | None = None
+    agent_name: str | None = None
+    arguments: dict[str, Any] = field(default_factory=dict)
+    status: PlanStepStatus = PlanStepStatus.PENDING
+    result: Any = None
+    error: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate the plan step after initialization."""
+        if not self.description.strip():
+            raise ValueError("Plan step description must not be empty.")
+
+        if not self.step_id.strip():
+            raise ValueError("Plan step ID must not be empty.")
+
+        if self.tool_name is not None and not self.tool_name.strip():
+            raise ValueError("Tool name must not be empty.")
+
+        if self.agent_name is not None and not self.agent_name.strip():
+            raise ValueError("Agent name must not be empty.")
+
+    def mark_running(self) -> None:
+        """Mark the plan step as currently running."""
+        self.status = PlanStepStatus.RUNNING
+        self.error = None
+
+    def mark_completed(self, result: Any = None) -> None:
+        """Mark the plan step as successfully completed."""
+        self.status = PlanStepStatus.COMPLETED
+        self.result = result
+        self.error = None
+
+    def mark_failed(self, error: str) -> None:
+        """Mark the plan step as failed."""
+        if not error.strip():
+            raise ValueError("Plan step error must not be empty.")
+
+        self.status = PlanStepStatus.FAILED
+        self.error = error
+
+    def mark_skipped(self) -> None:
+        """Mark the plan step as skipped."""
+        self.status = PlanStepStatus.SKIPPED
+
+
+@dataclass(slots=True)
+class AgentPlan:
+    """Represent an ordered execution plan for an AI agent."""
+
+    objective: str
+    plan_id: str = field(default_factory=lambda: str(uuid4()))
+    steps: list[AgentPlanStep] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate the agent plan after initialization."""
+        if not self.objective.strip():
+            raise ValueError("Agent plan objective must not be empty.")
+
+        if not self.plan_id.strip():
+            raise ValueError("Agent plan ID must not be empty.")
+
+    @property
+    def is_complete(self) -> bool:
+        """Return whether every plan step has reached a terminal state."""
+        terminal_statuses = {
+            PlanStepStatus.COMPLETED,
+            PlanStepStatus.FAILED,
+            PlanStepStatus.SKIPPED,
+        }
+
+        return bool(self.steps) and all(
+            step.status in terminal_statuses for step in self.steps
+        )
+
+    @property
+    def has_failures(self) -> bool:
+        """Return whether any plan step has failed."""
+        return any(step.status == PlanStepStatus.FAILED for step in self.steps)
+
+    def add_step(self, step: AgentPlanStep) -> None:
+        """Append a step to the execution plan."""
+        self.steps.append(step)
+
+    def get_step(self, step_id: str) -> AgentPlanStep:
+        """Return a plan step by its identifier."""
+        for step in self.steps:
+            if step.step_id == step_id:
+                return step
+
+        raise KeyError(f"Plan step '{step_id}' was not found.")
+
+## File 2 — code tests\test_agent_planning.py
+
+"""Tests for shared AI-agent planning models."""
+
+import pytest
+
+from full_stack_ai_shared.agents.planning import (
+    AgentPlan,
+    AgentPlanStep,
+    PlanStepStatus,
+)
+
+
+def test_agent_plan_step_defaults() -> None:
+    """Plan steps should provide generated IDs and pending status."""
+    step = AgentPlanStep(description="Retrieve maintenance records.")
+
+    assert step.step_id
+    assert step.description == "Retrieve maintenance records."
+    assert step.tool_name is None
+    assert step.agent_name is None
+    assert step.arguments == {}
+    assert step.status == PlanStepStatus.PENDING
+    assert step.result is None
+    assert step.error is None
+
+
+def test_agent_plan_step_marks_running() -> None:
+    """Plan steps should transition to running."""
+    step = AgentPlanStep(description="Search enterprise documents.")
+
+    step.mark_running()
+
+    assert step.status == PlanStepStatus.RUNNING
+    assert step.error is None
+
+
+def test_agent_plan_step_marks_completed() -> None:
+    """Plan steps should store successful execution results."""
+    step = AgentPlanStep(description="Analyze retrieved records.")
+
+    step.mark_completed({"risk_level": "medium"})
+
+    assert step.status == PlanStepStatus.COMPLETED
+    assert step.result == {"risk_level": "medium"}
+    assert step.error is None
+
+
+def test_agent_plan_step_marks_failed() -> None:
+    """Plan steps should store execution errors."""
+    step = AgentPlanStep(description="Call diagnostic tool.")
+
+    step.mark_failed("Diagnostic tool was unavailable.")
+
+    assert step.status == PlanStepStatus.FAILED
+    assert step.error == "Diagnostic tool was unavailable."
+
+
+def test_agent_plan_step_rejects_empty_description() -> None:
+    """Plan steps should reject empty descriptions."""
+    with pytest.raises(
+        ValueError,
+        match="Plan step description must not be empty.",
+    ):
+        AgentPlanStep(description="   ")
+
+
+def test_agent_plan_defaults() -> None:
+    """Agent plans should provide generated IDs and empty collections."""
+    plan = AgentPlan(objective="Analyze equipment health.")
+
+    assert plan.plan_id
+    assert plan.objective == "Analyze equipment health."
+    assert plan.steps == []
+    assert plan.metadata == {}
+    assert plan.is_complete is False
+    assert plan.has_failures is False
+
+
+def test_agent_plan_adds_and_retrieves_step() -> None:
+    """Agent plans should store and retrieve ordered steps."""
+    plan = AgentPlan(objective="Analyze equipment health.")
+    step = AgentPlanStep(description="Retrieve sensor readings.")
+
+    plan.add_step(step)
+
+    assert plan.steps == [step]
+    assert plan.get_step(step.step_id) is step
+
+
+def test_agent_plan_reports_completion() -> None:
+    """Agent plans should report completion for terminal steps."""
+    completed_step = AgentPlanStep(description="Retrieve data.")
+    skipped_step = AgentPlanStep(description="Request human review.")
+
+    completed_step.mark_completed({"records": 10})
+    skipped_step.mark_skipped()
+
+    plan = AgentPlan(
+        objective="Analyze equipment health.",
+        steps=[completed_step, skipped_step],
+    )
+
+    assert plan.is_complete is True
+    assert plan.has_failures is False
+
+
+def test_agent_plan_reports_failures() -> None:
+    """Agent plans should report failed steps."""
+    step = AgentPlanStep(description="Execute diagnostic tool.")
+    step.mark_failed("Execution failed.")
+
+    plan = AgentPlan(
+        objective="Analyze equipment health.",
+        steps=[step],
+    )
+
+    assert plan.is_complete is True
+    assert plan.has_failures is True
+
+
+def test_agent_plan_get_step_rejects_unknown_id() -> None:
+    """Agent plans should reject unknown step identifiers."""
+    plan = AgentPlan(objective="Analyze equipment health.")
+
+    with pytest.raises(
+        KeyError,
+        match="Plan step 'missing-step' was not found.",
+    ):
+        plan.get_step("missing-step")
+
+## Update the public agents API     code src\full_stack_ai_shared\agents\__init__.py
+
+from full_stack_ai_shared.agents.planning import (
+    AgentPlan,
+    AgentPlanStep,
+    PlanStepStatus,
+)
+
+Add these names to __all__:
+
+"AgentPlan",
+"AgentPlanStep",
+"PlanStepStatus",
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\agents\planning.py `
+    src\full_stack_ai_shared\agents\__init__.py `
+    tests\test_agent_planning.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\agents\planning.py `
+    src\full_stack_ai_shared\agents\__init__.py `
+    tests\test_agent_planning.py
+
+uv run mypy src
+
+## Get-Content tests\test_agent_planning.py
+
+## code tests\test_agent_planning.py
+
+"""Tests for the shared agent planning components."""
+
+from full_stack_ai_shared.agents import (
+    AgentExecutionContext,
+    PlanningAgent,
+    PlanningRequest,
+    PlanningResult,
+)
+
+
+def test_planning_request_defaults() -> None:
+    """PlanningRequest should initialize with default values."""
+    request = PlanningRequest(
+        goal="Build an enterprise AI platform",
+    )
+
+    assert request.goal == "Build an enterprise AI platform"
+    assert request.context == {}
+    assert request.constraints == []
+
+
+def test_planning_request_custom_values() -> None:
+    """PlanningRequest should preserve supplied values."""
+    request = PlanningRequest(
+        goal="Deploy AI service",
+        context={"environment": "production"},
+        constraints=["budget", "time"],
+    )
+
+    assert request.context["environment"] == "production"
+    assert request.constraints == ["budget", "time"]
+
+
+def test_planning_result_defaults() -> None:
+    """PlanningResult should store generated execution plan."""
+    result = PlanningResult(
+        goal="Create API",
+        steps=[
+            "Design architecture",
+            "Implement endpoints",
+            "Write tests",
+        ],
+    )
+
+    assert result.goal == "Create API"
+    assert len(result.steps) == 3
+    assert result.metadata == {}
+
+
+def test_planning_result_metadata() -> None:
+    """PlanningResult should preserve metadata."""
+    result = PlanningResult(
+        goal="Deploy platform",
+        steps=["Deploy"],
+        metadata={"estimated_hours": 8},
+    )
+
+    assert result.metadata["estimated_hours"] == 8
+
+
+def test_planning_agent_generates_plan() -> None:
+    """PlanningAgent should create a sequential execution plan."""
+    agent = PlanningAgent()
+    context = AgentExecutionContext()
+
+    request = PlanningRequest(
+        goal="Develop predictive maintenance application"
+    )
+
+    result = agent.plan(
+        request=request,
+        context=context,
+    )
+
+    assert isinstance(result, PlanningResult)
+    assert result.goal == request.goal
+    assert len(result.steps) >= 1
+    assert any("predictive" in step.lower() or "develop" in step.lower() for step in result.steps)
+
+
+def test_planning_agent_returns_metadata() -> None:
+    """PlanningAgent should include planning metadata."""
+    agent = PlanningAgent()
+
+    result = agent.plan(
+        request=PlanningRequest(goal="Build AI assistant"),
+        context=AgentExecutionContext(),
+    )
+
+    assert isinstance(result.metadata, dict)
+
+
+def test_planning_agent_empty_goal() -> None:
+    """PlanningAgent should reject an empty goal."""
+    agent = PlanningAgent()
+
+    try:
+        agent.plan(
+            request=PlanningRequest(goal=""),
+            context=AgentExecutionContext(),
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected ValueError for empty goal.")
+
+## Run
+
+uv run ruff format tests\test_agent_planning.py
+uv run ruff check tests\test_agent_planning.py
+uv run mypy src
+uv run pytest tests\test_agent_planning.py -v
+
+## code src\full_stack_ai_shared\agents\__init__.py
+
+from full_stack_ai_shared.agents.planning import (
+    PlanningAgent,
+    PlanningRequest,
+    PlanningResult,
+)
+
+## Run
+
+uv run ruff format tests\test_agent_planning.py
+
+uv run ruff check src\full_stack_ai_shared\agents\planning.py src\full_stack_ai_shared\agents\__init__.py tests\test_agent_planning.py
+
+uv run mypy src
+
+uv run pytest tests\test_agent_planning.py -v
+
+uv run ruff format `
+    src\full_stack_ai_shared\tools\exceptions.py `
+    src\full_stack_ai_shared\tools\__init__.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\tools\exceptions.py `
+    src\full_stack_ai_shared\tools\__init__.py `
+    tests\test_tool_exceptions.py
+
+uv run pytest tests\test_tool_exceptions.py -v
+
+## code src\full_stack_ai_shared\tools\decorators.py
+
+"""Function-based tool implementations and decorators."""
+
+from collections.abc import Awaitable, Callable
+from inspect import isawaitable
+from typing import Any
+
+from full_stack_ai_shared.tools.base import BaseTool
+from full_stack_ai_shared.tools.context import ToolContext
+from full_stack_ai_shared.tools.models import ToolResult
+
+ToolFunction = Callable[..., Any | Awaitable[Any]]
+
+
+class FunctionTool(BaseTool):
+    """Expose a Python function through the shared tool interface."""
+
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        function: ToolFunction,
+        input_schema: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize the function-backed tool."""
+        super().__init__(
+            name=name,
+            description=description,
+            input_schema=input_schema,
+        )
+        self._function = function
+
+    async def execute(
+        self,
+        arguments: dict[str, Any],
+        context: ToolContext | None = None,
+    ) -> ToolResult:
+        """Execute the wrapped function with the provided arguments."""
+        del context
+
+        try:
+            output = self._function(**arguments)
+
+            if isawaitable(output):
+                output = await output
+
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                output=output,
+            )
+        except Exception as error:
+            return ToolResult(
+                tool_name=self.name,
+                success=False,
+                error=str(error),
+            )
+
+
+def tool(
+    name: str,
+    description: str,
+    input_schema: dict[str, Any] | None = None,
+) -> Callable[[ToolFunction], FunctionTool]:
+    """Convert a Python function into a shared AI tool."""
+
+    def decorator(function: ToolFunction) -> FunctionTool:
+        return FunctionTool(
+            name=name,
+            description=description,
+            function=function,
+            input_schema=input_schema,
+        )
+
+    return decorator
+
+## code src\full_stack_ai_shared\tools\__init__.py
+
+"""Shared AI tool abstractions and execution services."""
+
+from full_stack_ai_shared.tools.base import BaseTool
+from full_stack_ai_shared.tools.context import ToolContext
+from full_stack_ai_shared.tools.decorators import FunctionTool, tool
+from full_stack_ai_shared.tools.exceptions import (
+    ToolAlreadyRegisteredError,
+    ToolError,
+    ToolExecutionError,
+    ToolNotFoundError,
+)
+from full_stack_ai_shared.tools.executor import ToolExecutor
+from full_stack_ai_shared.tools.models import (
+    ToolDefinition,
+    ToolRequest,
+    ToolResult,
+)
+from full_stack_ai_shared.tools.registry import ToolRegistry
+
+__all__ = [
+    "BaseTool",
+    "FunctionTool",
+    "ToolAlreadyRegisteredError",
+    "ToolContext",
+    "ToolDefinition",
+    "ToolError",
+    "ToolExecutionError",
+    "ToolExecutor",
+    "ToolNotFoundError",
+    "ToolRegistry",
+    "ToolRequest",
+    "ToolResult",
+    "tool",
+]
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\tools\decorators.py `
+    src\full_stack_ai_shared\tools\__init__.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\tools\decorators.py `
+    src\full_stack_ai_shared\tools\__init__.py
+
+uv run mypy src
+
+uv run pytest `
+    tests\test_tool_decorators.py `
+    tests\test_tools_public_api.py `
+    tests\test_tool_exceptions.py `
+    uv run pytest -v
+    -v
+
+## Step 16.1 — Request Logging Middleware
+
+        ## cd shared-infrastructure\python
+        
+        ##  1. Create the files
+
+New-Item -ItemType Directory -Force `
+    src\full_stack_ai_shared\middleware | Out-Null
+
+New-Item -ItemType File -Force `
+    src\full_stack_ai_shared\middleware\request_logging.py | Out-Null
+
+New-Item -ItemType File -Force `
+    src\full_stack_ai_shared\middleware\__init__.py | Out-Null
+
+New-Item -ItemType File -Force `
+    tests\test_request_logging_middleware.py | Out-Null
+
+##  2. Add  -   code src\full_stack_ai_shared\middleware\request_logging.py
+
+"""HTTP request logging middleware."""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from full_stack_ai_shared.logging import (
+    clear_request_id,
+    create_request_id,
+    get_logger,
+    set_request_id,
+)
+
+logger = get_logger(__name__)
+
+
+class RequestLoggingMiddleware:
+    """Log incoming HTTP requests and outgoing responses."""
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        request_id_header: str = "X-Request-ID",
+    ) -> None:
+        """Initialize the request logging middleware."""
+        self.app = app
+        self.request_id_header = request_id_header
+
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> None:
+        """Process and log an HTTP request."""
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request_id = self._get_request_id(scope)
+        set_request_id(request_id)
+
+        method = str(scope.get("method", "UNKNOWN"))
+        path = str(scope.get("path", "/"))
+        client_ip = self._get_client_ip(scope)
+
+        status_code: int | None = None
+
+        async def send_wrapper(message: Message) -> None:
+            nonlocal status_code
+
+            if message["type"] == "http.response.start":
+                status_code = int(message["status"])
+
+                headers = MutableHeaders(scope=message)
+                headers[self.request_id_header] = request_id
+
+            await send(message)
+
+        logger.info(
+            "HTTP request started",
+            extra={
+                "request_id": request_id,
+                "http_method": method,
+                "http_path": path,
+                "client_ip": client_ip,
+            },
+        )
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        except Exception:
+            logger.exception(
+                "HTTP request failed",
+                extra={
+                    "request_id": request_id,
+                    "http_method": method,
+                    "http_path": path,
+                    "client_ip": client_ip,
+                },
+            )
+            raise
+        else:
+            logger.info(
+                "HTTP request completed",
+                extra={
+                    "request_id": request_id,
+                    "http_method": method,
+                    "http_path": path,
+                    "client_ip": client_ip,
+                    "status_code": status_code,
+                },
+            )
+        finally:
+            clear_request_id()
+
+    def _get_request_id(self, scope: Scope) -> str:
+        """Return an incoming request ID or create a new one."""
+        header_name = self.request_id_header.lower().encode("latin-1")
+
+        for name, value in scope.get("headers", []):
+            if name.lower() == header_name:
+                request_id = value.decode("latin-1").strip()
+
+                if request_id:
+                    return request_id
+
+        return create_request_id()
+
+    @staticmethod
+    def _get_client_ip(scope: Scope) -> str | None:
+        """Return the client IP address when available."""
+        client: Any = scope.get("client")
+
+        if not client:
+            return None
+
+        return str(client[0])
+
+
+RequestHandler = Callable[[Scope, Receive, Send], Awaitable[None]]
+
+##  Update the middleware package exports -     code src\full_stack_ai_shared\middleware\__init__.py
+
+"""Reusable HTTP middleware components."""
+
+from full_stack_ai_shared.middleware.request_logging import (
+    RequestLoggingMiddleware,
+)
+
+__all__ = [
+    "RequestLoggingMiddleware",
+]
+
+##  4. Add the middleware tests -       code tests\test_request_logging_middleware.py
+
+"""Tests for request logging middleware."""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Iterator
+
+import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from full_stack_ai_shared.logging import get_request_id
+from full_stack_ai_shared.middleware import RequestLoggingMiddleware
+
+
+@pytest.fixture
+def app() -> FastAPI:
+    """Create a FastAPI application with request logging enabled."""
+    application = FastAPI()
+    application.add_middleware(RequestLoggingMiddleware)
+
+    @application.get("/health")
+    async def health() -> dict[str, str | None]:
+        return {
+            "status": "healthy",
+            "request_id": get_request_id(),
+        }
+
+    @application.get("/failure")
+    async def failure() -> None:
+        raise RuntimeError("Unexpected middleware test failure.")
+
+    return application
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    """Use asyncio for async tests."""
+    return "asyncio"
+
+
+@pytest.fixture
+def log_records(
+    caplog: pytest.LogCaptureFixture,
+) -> Iterator[pytest.LogCaptureFixture]:
+    """Capture middleware log records."""
+    caplog.set_level(
+        logging.INFO,
+        logger="full_stack_ai_shared.middleware.request_logging",
+    )
+
+    yield caplog
+
+
+@pytest.mark.anyio
+async def test_middleware_adds_generated_request_id(
+    app: FastAPI,
+) -> None:
+    """Middleware should generate and return a request ID."""
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+    ) as client:
+        response = await client.get("/health")
+
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"]
+    assert response.json()["request_id"] == response.headers["X-Request-ID"]
+
+
+@pytest.mark.anyio
+async def test_middleware_preserves_incoming_request_id(
+    app: FastAPI,
+) -> None:
+    """Middleware should preserve a valid incoming request ID."""
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+    ) as client:
+        response = await client.get(
+            "/health",
+            headers={"X-Request-ID": "request-123"},
+        )
+
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"] == "request-123"
+    assert response.json()["request_id"] == "request-123"
+
+
+@pytest.mark.anyio
+async def test_middleware_logs_request_start_and_completion(
+    app: FastAPI,
+    log_records: pytest.LogCaptureFixture,
+) -> None:
+    """Middleware should log request start and completion."""
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+    ) as client:
+        response = await client.get(
+            "/health",
+            headers={"X-Request-ID": "logging-test-123"},
+        )
+
+    assert response.status_code == 200
+
+    messages = [record.getMessage() for record in log_records.records]
+
+    assert "HTTP request started" in messages
+    assert "HTTP request completed" in messages
+
+    completion_record = next(
+        record
+        for record in log_records.records
+        if record.getMessage() == "HTTP request completed"
+    )
+
+    assert completion_record.request_id == "logging-test-123"
+    assert completion_record.http_method == "GET"
+    assert completion_record.http_path == "/health"
+    assert completion_record.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_middleware_logs_unhandled_exception(
+    app: FastAPI,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Middleware should log exceptions before re-raising them."""
+    caplog.set_level(
+        logging.ERROR,
+        logger="full_stack_ai_shared.middleware.request_logging",
+    )
+
+    transport = ASGITransport(
+        app=app,
+        raise_app_exceptions=True,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Unexpected middleware test failure",
+    ):
+        async with AsyncClient(
+            transport=transport,
+            base_url="http://test",
+        ) as client:
+            await client.get(
+                "/failure",
+                headers={"X-Request-ID": "failure-test-123"},
+            )
+
+    failure_record = next(
+        record
+        for record in caplog.records
+        if record.getMessage() == "HTTP request failed"
+    )
+
+    assert failure_record.request_id == "failure-test-123"
+    assert failure_record.http_method == "GET"
+    assert failure_record.http_path == "/failure"
+
+## 5. Confirm the required dependencies
+
+uv add fastapi starlette
+uv add --dev httpx pytest pytest-asyncio
+uv sync
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\middleware\request_logging.py `
+    src\full_stack_ai_shared\middleware\__init__.py `
+    tests\test_request_logging_middleware.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\middleware\request_logging.py `
+    src\full_stack_ai_shared\middleware\__init__.py `
+    tests\test_request_logging_middleware.py `
+    --fix
+
+uv run ruff check `
+    src\full_stack_ai_shared\middleware\request_logging.py `
+    src\full_stack_ai_shared\middleware\__init__.py `
+    tests\test_request_logging_middleware.py
+
+uv run mypy src
+
+## Step 16.2 — Create Request Timing Middleware
+
+Create two files:
+
+New-Item -ItemType File -Force `
+    src\full_stack_ai_shared\middleware\timing.py | Out-Null
+
+New-Item -ItemType File -Force `
+    tests\test_timing_middleware.py | Out-Null
+
+Open 
+
+## code src\full_stack_ai_shared\middleware\timing.py
+
+"""HTTP request timing middleware."""
+
+from __future__ import annotations
+
+from time import perf_counter
+
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from full_stack_ai_shared.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+class RequestTimingMiddleware:
+    """Measure and report HTTP request execution time."""
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        process_time_header: str = "X-Process-Time",
+    ) -> None:
+        """Initialize the request timing middleware."""
+        self.app = app
+        self.process_time_header = process_time_header
+
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> None:
+        """Measure the execution duration of an HTTP request."""
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        started_at = perf_counter()
+        method = str(scope.get("method", "UNKNOWN"))
+        path = str(scope.get("path", "/"))
+
+        async def send_wrapper(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                elapsed_seconds = perf_counter() - started_at
+                headers = MutableHeaders(scope=message)
+                headers[self.process_time_header] = f"{elapsed_seconds:.6f}"
+
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            elapsed_seconds = perf_counter() - started_at
+
+            logger.info(
+                "HTTP request timing",
+                extra={
+                    "http_method": method,
+                    "http_path": path,
+                    "duration_seconds": elapsed_seconds,
+                },
+            )
+
+## code tests\test_timing_middleware.py
+
+"""Tests for HTTP request timing middleware."""
+
+import logging
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from full_stack_ai_shared.middleware.timing import RequestTimingMiddleware
+
+
+def create_test_app() -> FastAPI:
+    """Create an application configured with timing middleware."""
+    app = FastAPI()
+    app.add_middleware(RequestTimingMiddleware)
+
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "healthy"}
+
+    return app
+
+
+def test_timing_middleware_adds_process_time_header() -> None:
+    """Middleware should add the request processing duration header."""
+    client = TestClient(create_test_app())
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert "X-Process-Time" in response.headers
+    assert float(response.headers["X-Process-Time"]) >= 0
+
+
+def test_timing_middleware_preserves_response_body() -> None:
+    """Middleware should not modify the application response body."""
+    client = TestClient(create_test_app())
+
+    response = client.get("/health")
+
+    assert response.json() == {"status": "healthy"}
+
+
+def test_timing_middleware_logs_request_duration(
+    caplog: logging.LogCaptureFixture,
+) -> None:
+    """Middleware should log request execution timing information."""
+    client = TestClient(create_test_app())
+
+    with caplog.at_level(logging.INFO):
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    assert "HTTP request timing" in caplog.text
+
+## Export the middleware - code src\full_stack_ai_shared\middleware\__init__.py
+
+"""Reusable HTTP middleware components."""
+
+from full_stack_ai_shared.middleware.request_logging import (
+    RequestLoggingMiddleware,
+)
+from full_stack_ai_shared.middleware.timing import RequestTimingMiddleware
+
+__all__ = [
+    "RequestLoggingMiddleware",
+    "RequestTimingMiddleware",
+]
+
+## Run
+
+uv run ruff format `
+    src\full_stack_ai_shared\middleware\timing.py `
+    src\full_stack_ai_shared\middleware\__init__.py `
+    tests\test_timing_middleware.py
+
+uv run ruff check `
+    src\full_stack_ai_shared\middleware\timing.py `
+    src\full_stack_ai_shared\middleware\__init__.py `
+    tests\test_timing_middleware.py
+
+uv run mypy src
+
+uv run pytest tests\test_timing_middleware.py -v
+
+## Step 16.3 — Create Exception Handler Middleware
+
+New-Item -ItemType File -Force `
+    src\full_stack_ai_shared\middleware\exception_handler.py | Out-Null
+
+New-Item -ItemType File -Force `
+    tests\test_exception_handler_middleware.py | Out-Null
+
+## code src\full_stack_ai_shared\middleware\exception_handler.py
+
+"""Unhandled exception middleware."""
+
+from __future__ import annotations
+
+from http import HTTPStatus
+
+from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+from full_stack_ai_shared.logging import get_logger, get_request_id
+
+logger = get_logger(__name__)
+
+
+class ExceptionHandlerMiddleware:
+    """Convert unhandled application exceptions into JSON responses."""
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        include_exception_details: bool = False,
+    ) -> None:
+        """Initialize the exception handler middleware."""
+        self.app = app
+        self.include_exception_details = include_exception_details
+
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> None:
+        """Handle unhandled HTTP application exceptions."""
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        try:
+            await self.app(scope, receive, send)
+        except Exception as exc:
+            request_id = get_request_id()
+
+            logger.exception(
+                "Unhandled HTTP application exception",
+                extra={
+                    "request_id": request_id,
+                    "http_method": str(scope.get("method", "UNKNOWN")),
+                    "http_path": str(scope.get("path", "/")),
+                    "exception_type": type(exc).__name__,
+                },
+            )
+
+            response_content: dict[str, str | int | None] = {
+                "status_code": HTTPStatus.INTERNAL_SERVER_ERROR.value,
+                "error": HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
+                "message": "An unexpected error occurred.",
+                "request_id": request_id,
+            }
+
+            if self.include_exception_details:
+                response_content["detail"] = str(exc)
+
+            response = JSONResponse(
+                content=response_content,
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR.value,
+            )
+
+            await response(scope, receive, send)
+
+## code tests\test_exception_handler_middleware.py
+
+"""Tests for unhandled exception middleware."""
+
+import logging
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from full_stack_ai_shared.middleware.exception_handler import (
+    ExceptionHandlerMiddleware,
+)
+
+
+def create_test_app(
+    *,
+    include_exception_details: bool = False,
+) -> FastAPI:
+    """Create an application configured with exception middleware."""
+    app = FastAPI()
+    app.add_middleware(
+        ExceptionHandlerMiddleware,
+        include_exception_details=include_exception_details,
+    )
+
+    @app.get("/success")
+    async def success() -> dict[str, str]:
+        return {"status": "healthy"}
+
+    @app.get("/failure")
+    async def failure() -> None:
+        raise RuntimeError("Database connection failed.")
+
+    return app
+
+
+def test_exception_middleware_preserves_successful_response() -> None:
+    """Middleware should preserve successful application responses."""
+    client = TestClient(create_test_app())
+
+    response = client.get("/success")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "healthy"}
+
+
+def test_exception_middleware_returns_internal_server_error() -> None:
+    """Middleware should convert exceptions into JSON responses."""
+    client = TestClient(create_test_app(), raise_server_exceptions=False)
+
+    response = client.get("/failure")
+
+    assert response.status_code == 500
+    assert response.json()["status_code"] == 500
+    assert response.json()["error"] == "Internal Server Error"
+    assert response.json()["message"] == "An unexpected error occurred."
+
+
+def test_exception_middleware_hides_exception_details_by_default() -> None:
+    """Middleware should not expose internal exception details by default."""
+    client = TestClient(create_test_app(), raise_server_exceptions=False)
+
+    response = client.get("/failure")
+
+    assert "detail" not in response.json()
+    assert "Database connection failed." not in response.text
+
+
+def test_exception_middleware_can_include_exception_details() -> None:
+    """Middleware should expose details only when explicitly configured."""
+    client = TestClient(
+        create_test_app(include_exception_details=True),
+        raise_server_exceptions=False,
+    )
+
+    response = client.get("/failure")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Database connection failed."
+
+
+def test_exception_middleware_logs_unhandled_exception(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Middleware should log unhandled application exceptions."""
+    client = TestClient(create_test_app(), raise_server_exceptions=False)
+
+    with caplog.at_level(logging.ERROR):
+        response = client.get("/failure")
+
+    assert response.status_code == 500
+    assert "Unhandled HTTP application exception" in caplog.text
+    assert "Database connection failed." in caplog.text
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
